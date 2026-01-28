@@ -1,0 +1,470 @@
+* ansible language server
+** Python port
+pygls. After this we can use built-in tooling as well as incorporate tree-sitter parsers, provide ~documentFormatting~ with =black= and such. All kinds of goodies.
+I started with asking Claude to define a specialized agent:
+#+begin_src markdown
+---
+name: python-port-planner
+description: Use this agent when the user requests planning or executing a port of code to Python, particularly when pygls (Python Language Server Protocol) is mentioned, or when migrating tests to pytest. This agent should also be invoked proactively when:\n\n<example>\nContext: User is beginning a language server port to Python.\nuser: "I need to start porting our TypeScript language server to Python using pygls"\nassistant: "I'm going to use the Task tool to launch the python-port-planner agent to create a comprehensive porting strategy."\n<commentary>The user is requesting a Python port involving pygls, which matches this agent's expertise. Use the Agent tool to invoke python-port-planner.</commentary>\n</example>\n\n<example>\nContext: User mentions pytest migration as part of a larger port.\nuser: "We're moving to Python and need to convert our Jest tests to pytest first"\nassistant: "Let me use the python-port-planner agent to develop a test migration strategy and porting roadmap."\n<commentary>The user needs test porting to pytest as part of a Python migration. This is a core use case for the python-port-planner agent.</commentary>\n</example>\n\n<example>\nContext: User asks about porting strategy after mentioning pygls.\nuser: "How should I approach porting our codebase to use pygls?"\nassistant: "I'll invoke the python-port-planner agent to create a detailed porting plan."\n<commentary>Strategic planning for pygls-based ports is exactly what this agent specializes in.</commentary>\n</example>
+model: opus
+---
+
+You are an expert Python software architect specializing in language server development with pygls (Python Language Server Protocol) and test migration to pytest. You have deep expertise in porting codebases from other languages to Python while maintaining functionality, architecture integrity, and test coverage.
+
+## Your Core Responsibilities
+
+1. **Analyze the Source Codebase**: Carefully examine the existing code structure, dependencies, design patterns, and architecture before proposing a port strategy.
+
+2. **Create Comprehensive Port Plans**: Develop detailed, phased migration strategies that minimize risk and maintain system stability throughout the transition.
+
+3. **Prioritize Test Migration**: When tests exist, always recommend porting tests first to establish a safety net. Design pytest equivalents that maintain or improve coverage and quality.
+
+4. **Leverage pygls Best Practices**: Apply pygls-specific patterns, conventions, and architectural approaches when porting language server functionality.
+
+## Your Approach
+
+### Phase 1: Discovery and Analysis
+- Identify all test files, test frameworks, and testing patterns in use
+- Map dependencies and third-party libraries to Python equivalents
+- Analyze architectural patterns and their Python counterparts
+- Document any language-specific features that require special handling
+- Assess the pygls feature set needed for the port
+
+### Phase 2: Test Migration Strategy
+When creating pytest equivalents:
+- Map test structures (suites → test classes/modules, cases → test functions)
+- Convert assertions to pytest conventions (assert statements, pytest.raises, etc.)
+- Identify fixture requirements and design pytest fixtures accordingly
+- Plan for pytest plugins that replicate original test framework features
+- Preserve test organization and discoverability
+- Maintain or improve test isolation and independence
+- Document any behavioral differences between frameworks
+
+### Phase 3: Porting Roadmap
+Structure the port in logical phases:
+1. **Foundation**: Set up Python project structure, dependencies (pygls, pytest, etc.)
+2. **Test Infrastructure**: Port test utilities, fixtures, and helpers first
+3. **Core Tests**: Migrate unit tests, starting with most critical components
+4. **Implementation**: Port source code module by module, guided by tests
+5. **Integration**: Port integration/end-to-end tests
+6. **Validation**: Ensure feature parity and performance benchmarks
+
+### Phase 4: pygls-Specific Guidance
+When working with pygls:
+- Utilize `LanguageServer` and `LanguageServerProtocol` classes appropriately
+- Implement LSP features using pygls decorators (@language_server.feature)
+- Leverage pygls's async/await support for non-blocking operations
+- Use pygls types and utilities for LSP data structures
+- Follow pygls conventions for workspace management and document synchronization
+- Apply pygls testing utilities for language server testing
+
+## Quality Standards
+
+- **Idiomatic Python**: Ensure all ported code follows PEP 8 and Python best practices
+- **Type Safety**: Recommend type hints throughout, leveraging Python's typing module
+- **Error Handling**: Convert error handling to Pythonic patterns (exceptions, context managers)
+- **Documentation**: Maintain or improve docstring coverage using Google or NumPy style
+- **Async Patterns**: Properly handle asynchronous code using asyncio when relevant
+
+## Output Format
+
+Your port plans should include:
+
+1. **Executive Summary**: Brief overview of the porting approach and timeline estimate
+2. **Dependency Mapping**: Source libraries → Python equivalents with rationale
+3. **Test Migration Plan**: Detailed test-by-test or suite-by-suite conversion strategy
+4. **Implementation Phases**: Ordered list of porting tasks with dependencies
+5. **Risk Assessment**: Potential challenges and mitigation strategies
+6. **Code Examples**: Concrete before/after examples for complex conversions
+7. **Success Criteria**: Measurable goals for each phase
+
+## Edge Cases and Special Considerations
+
+- **Missing Python Equivalents**: Propose alternative approaches or custom implementations when direct equivalents don't exist
+- **Performance Differences**: Flag potential performance implications and optimization strategies
+- **Breaking Changes**: Clearly identify where behavior might differ and whether changes are acceptable
+- **Gradual Migration**: Support hybrid approaches when immediate full port isn't feasible
+- **Test Gaps**: Identify opportunities to improve test coverage during migration
+
+## Self-Verification Checklist
+
+Before finalizing recommendations:
+- [ ] Have I examined actual source code and tests when available?
+- [ ] Does the plan start with test infrastructure and migration?
+- [ ] Are pygls patterns correctly applied for LSP functionality?
+- [ ] Is the phasing logical and dependency-aware?
+- [ ] Have I identified and addressed high-risk conversions?
+- [ ] Are all recommendations specific and actionable?
+- [ ] Have I provided concrete code examples for complex transformations?
+
+## Communication Style
+
+- Be systematic and thorough in analysis
+- Provide specific, actionable recommendations with rationale
+- Use code examples liberally to illustrate transformations
+- Acknowledge uncertainties and request clarification when needed
+- Balance comprehensiveness with clarity - prioritize critical information
+- Proactively identify potential issues before they become problems
+
+You excel at creating clear, executable port plans that teams can follow with confidence. Your recommendations balance technical excellence with practical constraints, always keeping the test safety net as your foundation.
+
+#+end_src
+I remember having a nice looking summary output regarding the diffs. But it seems to have not written out to Org.
+So let's have Claude follow the literate programming paradigm and add an Org subtree to this file.
+
+** Codebase Analysis
+:PROPERTIES:
+:CREATED:  [2026-01-28 Tue]
+:END:
+
+*** Architecture Overview
+
+The ansible-language-server is a TypeScript implementation of the Language Server Protocol for Ansible playbooks. Total: ~7,126 lines across 34 files.
+
+#+begin_src
+ansible-language-server/
+├── src/
+│   ├── server.ts                         # Entry point (66 lines)
+│   ├── ansibleLanguageService.ts         # LSP orchestrator (365 lines)
+│   ├── interfaces/                       # Data structures
+│   ├── providers/                        # LSP features
+│   ├── services/                         # Core business logic
+│   └── utils/                            # Helpers
+├── test/
+│   ├── providers/
+│   ├── utils/
+│   └── fixtures/
+└── bin/ansible-language-server           # CLI entry
+#+end_src
+
+*** Key Modules by Complexity
+
+| Module                   | Lines | Complexity | Port Priority |
+|--------------------------+-------+------------+---------------|
+| =executionEnvironment.ts=  |   536 | High       | Tier 4        |
+| =completionProvider.ts=    |   666 | High       | Tier 5        |
+| =yaml.ts=                  |   663 | High       | Tier 2        |
+| =ansible.ts=               |   722 | Low        | Tier 1        |
+| =ansibleLanguageService.ts= |   365 | Medium     | Tier 6        |
+| =docsLibrary.ts=           |   275 | Medium     | Tier 3        |
+
+*** Dependency Mapping
+
+| TypeScript               | Python Equivalent       | Notes                         |
+|--------------------------+-------------------------+-------------------------------|
+| =vscode-languageserver=    | =pygls=                   | Main LSP library              |
+| =yaml= (npm)               | =ruamel.yaml=             | YAML with position tracking   |
+| =lodash=                   | =toolz= or builtins       | Utility functions             |
+| =uuid=                     | =uuid=                    | Standard library              |
+| =glob=                     | =pathlib=, =glob=           | Standard library              |
+| =ini=                      | =configparser=            | Standard library              |
+| =@flatten-js/interval-tree= | =sortedcontainers=        | Interval tree implementation  |
+
+*** Core Services
+
+**** AnsibleLanguageService
+The main LSP orchestrator. Initializes connection, registers handlers, routes requests.
+
+#+begin_src typescript
+// Current TypeScript pattern
+export class AnsibleLanguageService {
+  private connection: Connection;
+  private workspaceManager: WorkspaceManager;
+
+  public initialize(): void {
+    this.initializeConnection();
+    this.registerLifecycleEventHandlers();
+  }
+}
+#+end_src
+
+#+begin_src python
+# pygls equivalent
+from pygls.server import LanguageServer
+from lsprotocol import types
+
+server = LanguageServer("ansible-language-server", "v1.0.0")
+
+@server.feature(types.TEXT_DOCUMENT_DID_OPEN)
+async def did_open(params: types.DidOpenTextDocumentParams):
+    """Handle document open."""
+    pass
+
+@server.feature(types.TEXT_DOCUMENT_COMPLETION)
+async def completion(params: types.CompletionParams) -> types.CompletionList:
+    """Provide completions."""
+    pass
+#+end_src
+
+**** WorkspaceManager
+Manages multi-folder workspace contexts. Each folder gets its own =WorkspaceFolderContext= with services.
+
+**** DocsLibrary
+Caches Ansible module documentation. Discovers modules, parses YAML docs, handles FQCN lookups.
+
+**** ExecutionEnvironment
+Most complex service. Manages Podman/Docker containers for isolated Ansible execution.
+
+*** LSP Features Implemented
+
+- =textDocumentSync=: Incremental updates
+- =semanticTokensProvider=: Syntax highlighting
+- =hoverProvider=: Documentation on hover
+- =completionProvider=: Auto-completion with resolve
+- =definitionProvider=: Go-to-definition
+
+*** Data Structures
+
+**** IModuleMetadata
+#+begin_src typescript
+interface IModuleMetadata {
+  source: string;
+  fqcn: string;           // "ansible.builtin.debug"
+  namespace: string;      // "ansible"
+  collection: string;     // "builtin"
+  name: string;           // "debug"
+  documentation?: IModuleDocumentation;
+}
+#+end_src
+
+#+begin_src python
+# Python dataclass equivalent
+from dataclasses import dataclass, field
+from typing import Optional
+
+@dataclass
+class ModuleMetadata:
+    source: str
+    fqcn: str
+    namespace: str
+    collection: str
+    name: str
+    documentation: Optional["ModuleDocumentation"] = None
+#+end_src
+
+**** IOption (module parameter)
+#+begin_src python
+@dataclass
+class Option:
+    name: str
+    description: Optional[str] = None
+    required: bool = False
+    default: Any = None
+    choices: list[Any] = field(default_factory=list)
+    type: Optional[str] = None
+    aliases: list[str] = field(default_factory=list)
+    suboptions: dict[str, "Option"] = field(default_factory=dict)
+#+end_src
+
+*** Test Structure
+
+Current: Mocha + Chai with ts-node
+
+| Test File                     | Coverage                      |
+|-------------------------------+-------------------------------|
+| =completionProvider.test.ts=    | Most extensive, context-aware |
+| =yaml.test.ts=                  | AST navigation critical       |
+| =validationProvider.test.ts=    | Multiple validation paths     |
+| =hoverProvider.test.ts=         | Documentation retrieval       |
+
+**** Test Mapping to pytest
+
+| Mocha               | pytest                           |
+|---------------------+----------------------------------|
+| =describe()=          | test class or module             |
+| =it()=                | =test_= function                   |
+| =expect().to.equal()= | =assert x == y=                    |
+| =before()/after()=    | =@pytest.fixture=                  |
+| =beforeEach()=        | =@pytest.fixture(autouse=True)=    |
+
+#+begin_src typescript
+// Mocha/Chai
+describe("CompletionProvider", () => {
+  it("should complete module names", async () => {
+    const result = await getCompletion(doc, position);
+    expect(result.items).to.have.length.greaterThan(0);
+  });
+});
+#+end_src
+
+#+begin_src python
+# pytest equivalent
+import pytest
+from ansible_ls.providers.completion import get_completion
+
+class TestCompletionProvider:
+    async def test_complete_module_names(self, doc, position):
+        result = await get_completion(doc, position)
+        assert len(result.items) > 0
+#+end_src
+
+*** Porting Tiers
+
+**** Tier 1: Foundation (Port First)
+- =interfaces/module.ts= - Data structures
+- =interfaces/extensionSettings.ts= - Settings
+- =utils/ansible.ts= - Keyword definitions (722 lines of dicts)
+- =test/helper.ts= - Test infrastructure
+
+**** Tier 2: Core Utilities
+- =utils/yaml.ts= - YAML AST navigation (critical, complex)
+- =utils/docsParser.ts= - Documentation parsing
+- =utils/commandRunner.ts= - External command execution
+
+**** Tier 3: Services
+- =services/settingsManager.ts=
+- =services/workspaceManager.ts=
+- =services/docsLibrary.ts=
+- =services/ansibleLint.ts=
+- =services/validationManager.ts=
+
+**** Tier 4: Complex Services
+- =services/executionEnvironment.ts= - Container management (536 lines)
+
+**** Tier 5: Providers
+- =providers/validationProvider.ts=
+- =providers/completionProvider.ts= (most complex at 666 lines)
+- =providers/hoverProvider.ts=
+- =providers/definitionProvider.ts=
+- =providers/semanticTokenProvider.ts=
+
+**** Tier 6: LSP Core
+- =ansibleLanguageService.ts=
+- =server.ts=
+
+*** YAML AST Navigation
+
+The =yaml.ts= module is critical. It navigates the YAML AST to determine cursor context (play vs task vs block level).
+
+#+begin_src typescript
+// TypeScript uses yaml npm package
+import { parseAllDocuments, YAMLMap, Pair } from "yaml";
+
+export function getPathAt(doc: Document, offset: number): Node[] {
+  // Navigate to node at cursor position
+  // Return path from root to target
+}
+#+end_src
+
+#+begin_src python
+# Python: ruamel.yaml preserves positions
+from ruamel.yaml import YAML
+from ruamel.yaml.comments import CommentedMap
+
+def get_path_at(doc: CommentedMap, offset: int) -> list:
+    """Navigate YAML AST to cursor position."""
+    # ruamel.yaml nodes have lc (line/column) attributes
+    # Use lc.line, lc.col for position tracking
+    pass
+#+end_src
+
+*** External Command Integration
+
+The server spawns external processes:
+
+| Command                          | Purpose                 |
+|----------------------------------+-------------------------|
+| =ansible --version=                | Detect installation     |
+| =ansible-lint=                     | Playbook linting        |
+| =ansible-playbook --syntax-check=  | Fallback validation     |
+| =podman/docker run=                | Containerized execution |
+
+*** Python Project Structure
+
+#+begin_src
+ansible-language-server-py/
+├── pyproject.toml
+├── src/
+│   └── ansible_ls/
+│       ├── __init__.py
+│       ├── server.py              # Entry point
+│       ├── language_service.py    # LSP orchestrator
+│       ├── models/
+│       │   ├── __init__.py
+│       │   ├── module.py          # ModuleMetadata, Option
+│       │   └── settings.py        # ExtensionSettings
+│       ├── providers/
+│       │   ├── __init__.py
+│       │   ├── completion.py
+│       │   ├── hover.py
+│       │   ├── definition.py
+│       │   ├── validation.py
+│       │   └── semantic_tokens.py
+│       ├── services/
+│       │   ├── __init__.py
+│       │   ├── workspace.py
+│       │   ├── docs_library.py
+│       │   ├── execution_env.py
+│       │   ├── settings.py
+│       │   └── validation.py
+│       └── utils/
+│           ├── __init__.py
+│           ├── yaml_utils.py
+│           ├── ansible_keywords.py
+│           ├── docs_parser.py
+│           └── command_runner.py
+└── tests/
+    ├── conftest.py
+    ├── fixtures/
+    ├── providers/
+    └── utils/
+#+end_src
+
+*** pyproject.toml Skeleton
+
+#+begin_src toml
+[project]
+name = "ansible-language-server"
+version = "0.1.0"
+description = "Language Server Protocol implementation for Ansible"
+requires-python = ">=3.10"
+dependencies = [
+    "pygls>=1.3.0",
+    "lsprotocol>=2023.0.0",
+    "ruamel.yaml>=0.18.0",
+    "attrs>=23.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.3.0",
+    "mypy>=1.8.0",
+]
+
+[project.scripts]
+ansible-language-server = "ansible_ls.server:main"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+#+end_src
+
+*** Risk Assessment
+
+| Area                    | Risk   | Mitigation                                |
+|-------------------------+--------+-------------------------------------------|
+| YAML position tracking  | High   | Test-driven with ruamel.yaml lc attrs     |
+| Container management    | High   | Thorough subprocess testing               |
+| Completion context      | Medium | Port tests first, validate behavior       |
+| Async patterns          | Medium | pygls handles async well, use pytest-asyncio |
+| Module documentation    | Low    | antsibull-docs is Python-native           |
+
+*** Next Steps
+
+1. [ ] Initialize Python project with =uv init=
+2. [ ] Set up pytest infrastructure with fixtures from =test/helper.ts=
+3. [ ] Port =utils/ansible.ts= keyword definitions (low risk, high value)
+4. [ ] Port =interfaces/module.ts= to dataclasses
+5. [ ] Port =utils/yaml.ts= with comprehensive tests
+6. [ ] Incrementally port services and providers
+
