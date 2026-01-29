@@ -837,13 +837,46 @@ python_version = "3.10"
 strict = true
 #+end_src
 
-***** Installation with Entry Points
+***** TODO Installation with Entry Points
+:PROPERTIES:
+:ID:       ef3ae54d-b360-446f-abd0-b3e0938b5945
+:END:
+- Note taken on [2026-01-28 Wed 19:03] \\
+  lettuce tweak the python version here
+  #+begin_example
+  Resolved 36 packages in 6.67s
+  error: Distribution `tree-sitter-languages==1.10.2 @ registry+https://pypi.org/simple` can't be installed because it doesn't have a source distribution or wheel for the current platform
+
+  hint: You're using CPython 3.14 (`cp314`), but `tree-sitter-languages` (v1.10.2) only has wheels with the following Python ABI tags: `cp310`, `cp311`, `cp312`
+    × No solution found when resolving dependencies:
+    ╰─▶ Because only the following versions of tree-sitter-languages are
+        available:
+            tree-sitter-languages<=1.10.0
+            tree-sitter-languages==1.10.2
+        and tree-sitter-languages>=1.10.0 has no wheels with a
+        matching Python ABI tag (e.g., `cp314`), we can conclude that
+        tree-sitter-languages>=1.10.0 cannot be used.
+        And because ansible-language-server==0.1.0 depends on
+        tree-sitter-languages>=1.10.0, we can conclude that
+        ansible-language-server==0.1.0 cannot be used.
+        And because only ansible-language-server==0.1.0 is available and you
+        require ansible-language-server, we can conclude that your requirements
+        are unsatisfiable.
+
+        hint: You require CPython 3.14 (`cp314`), but we only found wheels for
+        `tree-sitter-languages` (v1.10.2) with the following Python ABI tags:
+        `cp37m`, `cp38`, `cp39`, `cp310`, `cp311`, `cp312`
+  [ Babel evaluation exited with code 0 ]
+  #+end_example
 After adding =[build-system]=:
 #+begin_src bash
 uv sync                    # Install dependencies
 uv pip install -e .        # Install project with entry points
 ansible-language-server --version  # Verify CLI works
 #+end_src
+
+#+RESULTS:
+: 1.2.3
 
 ***** Build System Options
 | Build System | Best For                          | uv Integration |
