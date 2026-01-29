@@ -214,7 +214,8 @@ CLOSED: [2026-01-28 Tue]
 - [X] =utils/ansible.ts= - Keyword definitions → =src/ansible_ls/utils/ansible_keywords.py=
 - [X] =test/helper.ts= - Test infrastructure → =tests/conftest.py=
 
-****** TODO Ansible Keywords Port
+****** DONE Ansible Keywords Port
+CLOSED: [2026-01-28 Tue]
 :PROPERTIES:
 :ID:       a1b2c3d4-e5f6-7890-1234-567890abcdef
 :END:
@@ -223,13 +224,209 @@ CLOSED: [2026-01-28 Tue]
   Would it be reasonable to grab these keywords and datatypes from Ansible internals now that we're in Python? I am aware those API's aren't public but this is a closely-related tool and the maintenance burden is justifiable.
 Ported =src/utils/ansible.ts= (722 lines) to =src/ansible_ls/utils/ansible_keywords.py=.
 
+******* Ansible Internal API Research
+:PROPERTIES:
+:CREATED:  [2026-01-28 Tue]
+:END:
+
+*Recommendation: Use hybrid approach - dynamic validation from Ansible internals with static documentation.*
+
+******** Where Ansible Defines Keywords
+
+Ansible defines play/task/block/role keywords as class attributes using a descriptor pattern:
+
+| Context | Module                              | Class            | Count |
+|---------+-------------------------------------+------------------+-------|
+| Play    | =ansible.playbook.play=               | =Play=             |    42 |
+| Task    | =ansible.playbook.task=               | =Task=             |    42 |
+| Block   | =ansible.playbook.block=              | =Block=            |    31 |
+| Role    | =ansible.playbook.role.definition=    | =RoleDefinition=   |    26 |
+
+These are built dynamically via =FieldAttributeBase._fattributes()= which introspects the class hierarchy and collects all =Attribute= descriptor instances.
+
+******** Accessibility via Python Imports
+
+*YES - Fully accessible and read-only:*
+#+begin_src python
+import ansible.playbook.play as play_mod
+import ansible.playbook.task as task_mod
+import ansible.playbook.block as block_mod
+import ansible.playbook.role.definition as role_def
+
+# Get keywords for each context
+play_keywords = play_mod.Play.fattributes          # dict[str, Attribute]
+task_keywords = task_mod.Task.fattributes          # dict[str, Attribute]
+block_keywords = block_mod.Block.fattributes       # dict[str, Attribute]
+role_keywords = role_def.RoleDefinition.fattributes # dict[str, Attribute]
+
+# Just the keys
+play_kw_list = list(play_keywords.keys())
+#+end_src
+
+The =fattributes= property is a =@ClassProperty= providing cached, read-only access.
+
+******** Attribute Metadata Available
+
+Each keyword has rich metadata:
+#+begin_src python
+attr = play_keywords['name']
+print(attr.isa)        # 'string' - type constraint
+print(attr.required)   # False - whether required
+print(attr.default)    # default value
+print(attr.private)    # False - internal-only flag
+print(attr.alias)      # Alternative name (if aliased)
+print(attr.priority)   # Parse order
+print(attr.listof)     # Element type for lists
+#+end_src
+
+******** Stability Assessment
+
+*Official Position:* Ansible's internal APIs are *not publicly supported*. Breaking changes possible.
+
+*Practical Assessment:* *LOW RISK* for language server use
+- Attribute system is core to playbook parsing since Ansible 2.0
+- Used throughout Ansible internally, changes would be disruptive
+- Introspection mechanism (Python MRO + @cache) is extremely stable
+- Most changes are additive (new keywords)
+
+*Risk Scenarios:*
+| Scenario                        | Risk       | Mitigation                        |
+|---------------------------------+------------+-----------------------------------|
+| New keywords added              | Safe       | Additive change                   |
+| Keywords marked private         | Safe       | Filter with =attr.private == False= |
+| Keywords removed                | Rare       | Would break existing playbooks    |
+| Attribute class structure change | Very rare | Wrap in try/except for fallback   |
+
+******** Discrepancies Found (Ansible 2.20+ vs TypeScript LS)
+
+| Context | Missing from LS          | Extra in LS                       |
+|---------+--------------------------+-----------------------------------|
+| Play    | =validate_argspec=         | (none)                            |
+| Task    | =async_val=, =loop_with=     | =listen=, =local_action=            |
+| Block   | (perfect match)          | (perfect match)                   |
+| Role    | =role=                     | =delegate_facts=, =delegate_to=     |
+
+Notes:
+- =async_val=, =loop_with= are internal/private (correct to exclude)
+- =listen= is handler-only (correct to include for handlers)
+- =local_action= is deprecated syntax (keep for compatibility)
+
+******** Recommended Implementation
+
+*Hybrid approach:* Dynamic keyword loading with static documentation fallback.
+
+See =src/ansible_ls/utils/ansible_dynamic.py= for the full implementation which includes:
+
+- =KeywordMeta=: Frozen dataclass with =name=, =isa=, =required=, =default=, =listof=, =alias=
+- =DynamicKeywords=: Container with =play=, =task=, =block=, =role= dicts + =source= and =ansible_version=
+- =load_keywords()=: Cached loader with fallback (returns =DynamicKeywords=)
+- =get_keyword_names(context)=: Get =frozenset= of keyword names for a context
+- =get_keyword_meta(keyword, context)=: Get =KeywordMeta= or =None=
+- =is_valid_keyword(keyword, context)=: Check validity (handles =with_*= special case)
+- =validate_keywords_against_ansible()=: Compare static vs dynamic for drift detection
+
+Core loading logic:
+#+begin_src python
+@cache
+def load_keywords() -> DynamicKeywords:
+    """Load from Ansible if available, else static fallback."""
+    result = _load_from_ansible()
+    if result is not None:
+        return result
+    return _load_from_static()
+#+end_src
+
+******** Benefits of Hybrid Approach
+
+| Benefit                      | Static Only | Dynamic Only | Hybrid |
+|------------------------------+-------------+--------------+--------|
+| No maintenance of keywords   | ✗           | ✓            | ✓      |
+| Works without Ansible        | ✓           | ✗            | ✓      |
+| Type information available   | ✗           | ✓            | ✓      |
+| Matches installed version    | ✗           | ✓            | ✓      |
+| Documentation strings        | ✓           | ✗            | ✓      |
+| Graceful degradation         | N/A         | ✗            | ✓      |
+
+******** Conclusion
+
+Use dynamic loading as primary source with static fallback. Keep static documentation
+strings (Ansible =Attribute= objects don't include user-facing docs). This gives:
+- Zero maintenance for keyword lists
+- Always in sync with user's installed Ansible version
+- Rich type metadata for validation and completion
+- Graceful fallback when Ansible unavailable
+
 ******* Design Decisions
 
-| TypeScript                  | Python                        | Rationale                      |
-|-----------------------------+-------------------------------+--------------------------------|
-| =Map<string, string \vert MarkupContent>= | =dict[str, KeywordDoc]=         | Simpler, same semantics        |
-| =MarkupKind= from LSP       | Custom =MarkupKind= enum        | Avoid LSP dependency for data  |
-| Computed at runtime         | Computed at module load       | Immutable after import         |
+| TypeScript                              | Python                             | Rationale                            |
+|-----------------------------------------+------------------------------------+--------------------------------------|
+| =Map<string, string \vert MarkupContent>=   | =dict[str, KeywordDoc]=              | Simpler, same semantics              |
+| =MarkupKind= from LSP                     | Custom =MarkupKind= enum             | Avoid LSP dependency for data        |
+| Static keywords only                    | Hybrid: dynamic + static fallback  | Auto-sync with installed Ansible     |
+| No type metadata                        | =KeywordMeta= with =isa=, =required=     | Rich validation from Ansible attrs   |
+| Computed at runtime                     | Cached at first access (=@cache=)    | Immutable, single load               |
+
+******** Implementation Files
+
+| File                          | Purpose                                            |
+|-------------------------------+----------------------------------------------------|
+| =ansible_keywords.py=           | Static keyword definitions with documentation      |
+| =ansible_dynamic.py=            | Dynamic loader with fallback, type metadata        |
+
+******** Usage Pattern
+
+#+begin_src python
+from ansible_ls.utils.ansible_dynamic import (
+    load_keywords,
+    is_valid_keyword,
+    get_keyword_meta,
+)
+
+# Check source (ansible or static fallback)
+kw = load_keywords()
+print(f"Using {kw.source}, Ansible {kw.ansible_version}")
+
+# Validate a keyword
+if is_valid_keyword("become", "task"):
+    meta = get_keyword_meta("become", "task")
+    print(f"become: type={meta.isa}, required={meta.required}")
+
+# For documentation, use static module
+from ansible_ls.utils.ansible_keywords import get_keyword_documentation
+doc = get_keyword_documentation("become", "task")
+#+end_src
+
+******** Validation Output (Ansible 2.20.1)
+
+#+begin_src json
+{
+  "ansible_version": "2.20.1",
+  "play": {
+    "missing_from_static": ["validate_argspec"],
+    "extra_in_static": []
+  },
+  "task": {
+    "missing_from_static": ["async_val"],
+    "extra_in_static": ["listen", "local_action"]
+  },
+  "block": {
+    "missing_from_static": [],
+    "extra_in_static": []
+  },
+  "role": {
+    "missing_from_static": ["role"],
+    "extra_in_static": ["delegate_facts", "delegate_to"]
+  }
+}
+#+end_src
+
+Notes on discrepancies:
+- =async_val=: Internal keyword (=async= is reserved in Python), correctly excluded
+- =listen=: Handler-only keyword, intentionally included for handler completions
+- =local_action=: Deprecated syntax, kept for backwards compatibility
+- =validate_argspec=: New in recent Ansible, should add to static
+- =role=: Self-reference in role definitions, should add to static
+- =delegate_facts=, =delegate_to=: Not valid in role context per Ansible internals
 
 ******* Keyword Categories
 
@@ -414,7 +611,10 @@ class AnsibleLanguageServer:
 
 *Verdict:* Optional utility layer. Custom node navigation (like =AncestryBuilder=) will still be needed.
 
-***** Tier 3: Services
+***** TODO Tier 3: Services
+:PROPERTIES:
+:ID:       c138f0e6-703f-4005-af7b-be59f03bf3df
+:END:
 - =services/settingsManager.ts=
 - =services/workspaceManager.ts=
 - =services/docsLibrary.ts=
@@ -537,7 +737,10 @@ class ExecutionEnvironment:
 
 Use =podman-py= for container lifecycle, keep =subprocess= only for platform detection.
 
-***** Tier 5: Providers
+***** TODO Tier 5: Providers
+:PROPERTIES:
+:ID:       19253c36-3092-49e8-a29f-a20bb8a878e0
+:END:
 - =providers/validationProvider.ts=
 - =providers/completionProvider.ts= (most complex at 666 lines)
 - =providers/hoverProvider.ts=
@@ -1668,7 +1871,7 @@ class TestYamlParsing:
         assert "key" in node.text.decode()
 #+end_src
 
-**** Next Steps
+**** TODO Next Steps
 :PROPERTIES:
 :ID:       042d8753-3757-48a6-b5a0-251196171795
 :END:
