@@ -214,12 +214,13 @@ CLOSED: [2026-01-28 Tue]
 - [X] =utils/ansible.ts= - Keyword definitions → =src/ansible_ls/utils/ansible_keywords.py=
 - [X] =test/helper.ts= - Test infrastructure → =tests/conftest.py=
 
-****** DONE Ansible Keywords Port
-CLOSED: [2026-01-28 Tue]
+****** TODO Ansible Keywords Port
 :PROPERTIES:
 :ID:       a1b2c3d4-e5f6-7890-1234-567890abcdef
 :END:
 
+- Note taken on [2026-01-28 Wed 21:25] \\
+  Would it be reasonable to grab these keywords and datatypes from Ansible internals now that we're in Python? I am aware those API's aren't public but this is a closely-related tool and the maintenance burden is justifiable.
 Ported =src/utils/ansible.ts= (722 lines) to =src/ansible_ls/utils/ansible_keywords.py=.
 
 ******* Design Decisions
