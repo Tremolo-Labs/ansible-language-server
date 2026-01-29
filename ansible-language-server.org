@@ -1,13 +1,5 @@
 * ansible language server
 ** Python port
-pygls. After this we can use built-in tooling as well as incorporate tree-sitter parsers, provide ~documentFormatting~ with =black= and such. All kinds of goodies.
-
-*** Python Port Overview
-:PROPERTIES:
-:CREATED:  [2026-01-29 Wed]
-:END:
-
-**** Goals and Benefits
 
 The Python port of ansible-language-server aims to:
 
@@ -16,83 +8,271 @@ The Python port of ansible-language-server aims to:
 3. *Simplified Architecture* - Replace complex subprocess management with Python library calls (=podman-py=, =importlib.metadata=, =ansible-runner=)
 4. *Better Developer Experience* - Format with =black=, lint with =ruff=, type-check with =mypy=, all working on Python code: a familiar ecosystem and architecture.
 
-**** Architecture Diagram
 
-#+begin_src
-                    ┌─────────────────────────────────────────┐
-                    │           Language Server (pygls)        │
-                    │  ┌─────────────────────────────────────┐ │
-                    │  │    Providers (LSP Features)          │ │
-                    │  │  ┌──────────┐ ┌──────────┐          │ │
-                    │  │  │ Hover    │ │Definition│ ...      │ │
-                    │  │  └────┬─────┘ └────┬─────┘          │ │
-                    │  └───────┼────────────┼────────────────┘ │
-                    │          │            │                  │
-                    │  ┌───────▼────────────▼────────────────┐ │
-                    │  │         Services Layer               │ │
-                    │  │  ┌────────────┐ ┌────────────────┐   │ │
-                    │  │  │DocsLibrary │ │WorkspaceManager│   │ │
-                    │  │  └─────┬──────┘ └───────┬────────┘   │ │
-                    │  │        │                │            │ │
-                    │  │  ┌─────▼──────┐  ┌──────▼───────┐   │ │
-                    │  │  │AnsibleCfg  │  │SettingsManager│  │ │
-                    │  │  └────────────┘  └──────────────┘   │ │
-                    │  └─────────────────────────────────────┘ │
-                    │                    │                     │
-                    └────────────────────┼─────────────────────┘
-                                         │
-           ┌─────────────────────────────┼─────────────────────────────┐
-           │                             │                             │
-    ┌──────▼──────┐              ┌───────▼───────┐             ┌───────▼───────┐
-    │ tree-sitter │              │ Ansible APIs   │             │ External Tools│
-    │   (YAML)    │              │ (keywords,     │             │ (ansible-lint,│
-    │             │              │  modules)      │             │  podman)      │
-    └─────────────┘              └───────────────┘             └───────────────┘
-#+end_src
+*** Implementation Status Dashboard
 
-**** Implementation Status Dashboard
-
-| Component               | Status | Lines | Notes                                  |
-|-------------------------+--------+-------+----------------------------------------|
-| *Utils*                 |        |       |                                        |
-| =ansible_keywords.py=     | ✅ DONE |  ~670 | Static keyword definitions + docs      |
-| =ansible_dynamic.py=      | ✅ DONE |  ~260 | Dynamic keyword loading from Ansible   |
-| =yaml_utils.py=           | ✅ DONE |  ~180 | tree-sitter YAML AST navigation        |
-| =docsParser.py=           | TODO   |  ~200 | Port from TypeScript                   |
-| =docsFinder.py=           | TODO   |  ~150 | Port from TypeScript                   |
-| =commandRunner.py=        | TODO   |  ~100 | subprocess wrapper                     |
-|-------------------------+--------+-------+----------------------------------------|
-| *Models*                |        |       |                                        |
-| =module.py=               | ✅ DONE |   ~70 | ModuleMetadata, Option dataclasses     |
-| =settings.py=             | TODO   |  ~100 | ExtensionSettings dataclass            |
-|-------------------------+--------+-------+----------------------------------------|
-| *Services*              |        |       |                                        |
-| =settings.py=             | TODO   |  ~150 | Settings management                    |
-| =workspace.py=            | TODO   |  ~240 | Multi-folder workspace contexts        |
-| =docs_library.py=         | TODO   |  ~275 | Module documentation cache             |
-| =validation.py=           | TODO   |  ~180 | Validation orchestration               |
-| =ansible_lint.py=         | TODO   |  ~200 | ansible-lint integration               |
-| =execution_env.py=        | TODO   |  ~536 | Podman/Docker container support        |
-|-------------------------+--------+-------+----------------------------------------|
-| *Providers*             |        |       |                                        |
-| =hover.py=                | TODO   |  ~150 | Hover documentation                    |
-| =definition.py=           | TODO   |  ~120 | Go-to-definition                       |
-| =completion.py=           | TODO   |  ~666 | Auto-completion (most complex)         |
-| =validation.py=           | TODO   |  ~180 | Diagnostic publishing                  |
-| =semantic_tokens.py=      | TODO   |  ~200 | Semantic highlighting                  |
-|-------------------------+--------+-------+----------------------------------------|
-| *Server*                |        |       |                                        |
-| =server.py=               | ✅ DONE |   ~15 | Minimal pygls entry point              |
+| Component           | Status  | Lines | Notes                                |
+|---------------------+---------+-------+--------------------------------------|
+| *Utils*               |         |       |                                      |
+| =ansible_keywords.py= | ✅ DONE | ~670  | Static keyword definitions + docs    |
+| =ansible_dynamic.py=  | ✅ DONE | ~260  | Dynamic keyword loading from Ansible |
+| =yaml_utils.py=       | ✅ DONE | ~180  | tree-sitter YAML AST navigation      |
+| =docsParser.py=       | TODO    | ~200  | Port from TypeScript                 |
+| =docsFinder.py=       | TODO    | ~150  | Port from TypeScript                 |
+| =commandRunner.py=    | TODO    | ~100  | subprocess wrapper                   |
+|---------------------+---------+-------+--------------------------------------|
+| *Models*              |         |       |                                      |
+| =module.py=           | ✅ DONE | ~70   | ModuleMetadata, Option dataclasses   |
+| =settings.py=         | TODO    | ~100  | ExtensionSettings dataclass          |
+|---------------------+---------+-------+--------------------------------------|
+| *Services*            |         |       |                                      |
+| =settings.py=         | TODO    | ~150  | Settings management                  |
+| =workspace.py=        | TODO    | ~240  | Multi-folder workspace contexts      |
+| =docs_library.py=     | TODO    | ~275  | Module documentation cache           |
+| =validation.py=       | TODO    | ~180  | Validation orchestration             |
+| =ansible_lint.py=     | TODO    | ~200  | ansible-lint integration             |
+| =execution_env.py=    | TODO    | ~536  | Podman/Docker container support      |
+|---------------------+---------+-------+--------------------------------------|
+| *Providers*           |         |       |                                      |
+| =hover.py=            | TODO    | ~150  | Hover documentation                  |
+| =definition.py=       | TODO    | ~120  | Go-to-definition                     |
+| =completion.py=       | TODO    | ~666  | Auto-completion (most complex)       |
+| =validation.py=       | TODO    | ~180  | Diagnostic publishing                |
+| =semantic_tokens.py=  | TODO    | ~200  | Semantic highlighting                |
+|---------------------+---------+-------+--------------------------------------|
+| *Server*              |         |       |                                      |
+| =server.py=           | ✅ DONE | ~15   | Minimal pygls entry point            |
 
 *Tests:* 59 passing (27 dynamic keyword tests, 23 static keyword tests, 9 YAML utils tests)
 
+
+**** Implementation Checklist: Validation
+
+- [ ] Implement =ValidationManager= with debouncing
+- [ ] Implement =run_ansible_lint= subprocess wrapper
+- [ ] Parse codeclimate JSON output to diagnostics
+- [ ] Implement syntax-check fallback
+- [ ] Handle execution environment (run lint in container)
+- [ ] Write tests with mock lint output
+
+**** TODO Progress
+:PROPERTIES:
+:ID:       042d8753-3757-48a6-b5a0-251196171795
+:END:
+Research phase complete. Code skeletons documented. Ready for implementation.
+
+1. [X] Initialize Python project with =uv init=
+2. [X] Research tree-sitter for YAML AST (see Tier 2 findings)
+3. [X] Research podman-py for container management (see Tier 4 findings)
+4. [X] Research Ansible Python APIs (see External Command Integration)
+5. [X] Fix pyproject.toml build-system for entry points
+6. [X] Set up pytest infrastructure with fixtures from =test/helper.ts=
+7. [X] Port =utils/ansible.ts= keyword definitions (see [[*Ansible Keywords Port][Ansible Keywords Port]])
+8. [X] Port =interfaces/module.ts= to dataclasses (see =src/ansible_ls/models/module.py=)
+9. [X] Port =utils/yaml.ts= using tree-sitter-yaml with comprehensive tests (see [[*AncestryBuilder Wrapper Node Fix][AncestryBuilder Wrapper Node Fix]])
+10. [X] Document detailed porting notes with code skeletons (see [[*Service Porting Guide][Service Porting Guide]] and [[*Provider Porting Guide][Provider Porting Guide]])
+11. [ ] Tangle service skeletons and implement (=C-c C-v t= in Emacs)
+    - [ ] =SettingsManager= - settings caching and LSP config
+    - [ ] =WorkspaceManager= - multi-folder context
+    - [ ] =DocsLibrary= - module documentation cache
+    - [ ] =ValidationManager= - ansible-lint integration
+12. [ ] Tangle provider skeletons and implement
+    - [ ] =HoverProvider= - keyword and module docs on hover
+    - [ ] =DefinitionProvider= - go-to-definition for roles/includes
+    - [ ] =CompletionProvider= - context-aware completions
+
+***** Porting Tiers
+
+****** DONE Tier 1: Foundation (Port First)
+CLOSED: [2026-01-28 Tue]
+:PROPERTIES:
+:ID:       f1a2b3c4-d5e6-7890-abcd-ef1234567891
+:END:
+- [X] =interfaces/module.ts= - Data structures → =src/ansible_ls/models/module.py=
+- [ ] =interfaces/extensionSettings.ts= - Settings (TODO)
+- [X] =utils/ansible.ts= - Keyword definitions → =src/ansible_ls/utils/ansible_keywords.py=
+- [X] =test/helper.ts= - Test infrastructure → =tests/conftest.py=
+
+****** Tier 2: Core Utilities
+:PROPERTIES:
+:ID:       187f1b86-7e65-420d-ae76-a42dfeed799b
+:END:
+- =utils/yaml.ts= - YAML AST navigation (critical, complex)
+- =utils/docsParser.ts= - Documentation parsing
+- =utils/commandRunner.ts= - External command execution
+
+****** TODO Tier 3: Services
+:PROPERTIES:
+:ID:       c138f0e6-703f-4005-af7b-be59f03bf3df
+:END:
+- =services/settingsManager.ts=
+- =services/workspaceManager.ts=
+- =services/docsLibrary.ts=
+- =services/ansibleLint.ts=
+- =services/validationManager.ts=
+
+****** DONE Tier 4: Complex Services
+CLOSED: [2026-01-28 Tue]
+:PROPERTIES:
+:ID:       b3c8a3b7-2dff-4ebe-abcb-038942d7b008
+:END:
+- Note taken on [2026-01-28 Wed 17:53] \\
+  Is there a Python library that talks to Podman for this?
+- =services/executionEnvironment.ts= - Container management (536 lines)
+
+******* Podman Python Library Research
+:PROPERTIES:
+:CREATED:  [2026-01-28 Tue]
+:END:
+
+*Recommendation: Use [[https://github.com/containers/podman-py][podman-py]] (official Podman Python SDK).*
+
+******** Installation
+#+begin_src bash
+pip install podman  # podman-py v5.7.0 (Jan 2026)
+#+end_src
+
+******** Library vs Subprocess Comparison
+
+| Aspect           | podman-py (Library)          | subprocess                   |
+|------------------+------------------------------+------------------------------|
+| Error handling   | Structured exceptions        | Parse exit codes/stderr      |
+| Type safety      | Good (typed API)             | Poor                         |
+| Async support    | Yes (AsyncPodmanClient)      | Limited                      |
+| Streaming        | Native                       | Manual                       |
+| Performance      | ~10-20ms per op              | ~50-100ms (process spawn)    |
+| Dependencies     | 1 package                    | None                         |
+
+******** Basic Container Operations
+#+begin_src python
+from podman import PodmanClient
+
+class ExecutionEnvironment:
+    def __init__(self, image: str):
+        self.image = image
+        self.client = PodmanClient(
+            base_url="unix:///run/user/1000/podman/podman.sock"
+        )
+
+    def pull_image(self) -> bool:
+        """Pull container image."""
+        try:
+            self.client.images.pull(self.image)
+            return True
+        except Exception as e:
+            print(f"Pull failed: {e}")
+            return False
+
+    def run_container(self, name: str) -> bool:
+        """Run detached container with bash shell."""
+        try:
+            self.client.containers.run(
+                image=self.image,
+                name=name,
+                command=["bash"],
+                detach=True,
+                stdin=True,
+                environment=self._get_ansible_env(),
+                volumes=self._get_volume_mounts(),
+            )
+            return True
+        except Exception as e:
+            print(f"Run failed: {e}")
+            return False
+
+    def execute_command(self, container_name: str, cmd: list) -> tuple[int, str]:
+        """Execute command in running container."""
+        container = self.client.containers.get(container_name)
+        exit_code, output = container.exec_run(cmd=cmd, stdout=True, stderr=True)
+        return exit_code, output.decode() if output else ""
+
+    def cleanup(self, container_name: str) -> None:
+        """Stop and remove container."""
+        try:
+            container = self.client.containers.get(container_name)
+            container.stop(timeout=5)
+            container.remove()
+        except Exception:
+            pass  # Container may not exist
+#+end_src
+
+******** docker-py Compatibility
+=docker-py= can connect to Podman's Docker-compatible socket:
+#+begin_src python
+import docker
+client = docker.DockerClient(
+    base_url='unix:///run/user/1000/podman/podman.sock'
+)
+#+end_src
+*Caveats:* =docker.from_env()= unreliable with Podman; explicit =base_url= required.
+
+******** Hybrid Approach (Recommended)
+#+begin_src python
+import shutil
+from podman import PodmanClient
+
+class ExecutionEnvironment:
+    def __init__(self, settings: dict):
+        self.settings = settings
+        self.container_engine = self._detect_engine()
+        self.client = PodmanClient(...) if self.container_engine == "podman" else None
+
+    def _detect_engine(self) -> str:
+        """Detect podman or docker via shutil.which (no subprocess)."""
+        for engine in ["podman", "docker"]:
+            if shutil.which(engine):
+                return engine
+        raise RuntimeError("Neither podman nor docker found")
+#+end_src
+
+Use =podman-py= for container lifecycle, keep =subprocess= only for platform detection.
+
+****** TODO Tier 5: LSP Providers
+:PROPERTIES:
+:ID:       19253c36-3092-49e8-a29f-a20bb8a878e0
+:END:
+- =providers/validationProvider.ts=
+- =providers/completionProvider.ts= (most complex at 666 lines) \m/ \m/ \m/
+- =providers/hoverProvider.ts=
+- =providers/definitionProvider.ts=
+- =providers/semanticTokenProvider.ts=
+
+****** Tier 6: LSP Core
+:PROPERTIES:
+:ID:       3f427335-3572-4d9c-aaae-cc7a9e6c9c4a
+:END:
+- [[file:src/ansibleLanguageService.ts][ansibleLanguageService.ts]]
+- [[file:src/server.ts][server.ts]]
+
+***** Running Tests
+After tangling, set up environment and run tests:
+#+begin_src bash :results output :wrap example
+uv run pytest tests/ -v
+#+end_src
+
+#+RESULTS:
+#+begin_example
+============================= test session starts ==============================
+platform linux -- Python 3.12.12, pytest-9.0.2, pluggy-1.6.0
+cachedir: .pytest_cache
+rootdir: /home/chad/code/ansible-language-server
+configfile: pyproject.toml
+plugins: asyncio-1.3.0
+collected 59 items
+
+tests/utils/test_ansible_dynamic.py: 16 passed
+tests/utils/test_ansible_keywords.py: 23 passed
+tests/utils/test_yaml_utils.py: 9 passed
+
+============================== 59 passed in 0.33s ==============================
+#+end_example
 
 *** Design Decisions
 :PROPERTIES:
 :CREATED:  [2026-01-29 Wed]
 :END:
 
-**** pygls
+**** pygls for LSP layer
 
 =pygls= is the de-facto Python Language Server Protocol framework:
 - Full LSP spec compliance
@@ -118,6 +298,119 @@ The Python port of ansible-language-server aims to:
 
 For a language server that re-parses on every keystroke, incremental parsing and error recovery are critical.
 
+***** Tree-sitter Research Findings
+:PROPERTIES:
+:CREATED:  [2026-01-28 Tue]
+:END:
+
+*Recommendation: Use tree-sitter-yaml with py-tree-sitter for YAML AST navigation.*
+
+****** Installation
+#+begin_src bash
+pip install tree-sitter tree-sitter-languages
+#+end_src
+
+****** tree-sitter vs ruamel.yaml Comparison
+
+| Feature              | tree-sitter-yaml             | ruamel.yaml                  |
+|----------------------+------------------------------+------------------------------|
+| Position Tracking    | Native (start/end points)    | Native (lc attrs)            |
+| Incremental Parsing  | Yes (efficient updates)      | No                           |
+| Parent Traversal     | Cursor-based                 | Direct parent refs           |
+| Performance          | Optimized (C implementation) | Pure Python (slower)         |
+| Language Server Fit  | Excellent                    | Good for read-only           |
+
+****** Core Pattern: Get Node at Position
+#+begin_src python
+from tree_sitter_languages import get_language, get_parser
+
+language = get_language('yaml')
+parser = get_parser('yaml')
+
+def get_node_at_position(tree, offset: int):
+    """Get deepest node containing the byte offset."""
+    def walk(node):
+        if node.start_byte <= offset < node.end_byte:
+            for child in node.children:
+                result = walk(child)
+                if result:
+                    return result
+            return node
+        return None
+    return walk(tree.root_node)
+
+# Parse and query
+tree = parser.parse(yaml_content.encode('utf-8'))
+node = get_node_at_position(tree, cursor_offset)
+print(f"Type: {node.type}, Text: {node.text.decode()}")
+print(f"Position: line {node.start_point[0]}, col {node.start_point[1]}")
+#+end_src
+
+****** AncestryBuilder Port Pattern
+#+begin_src python
+class AncestryBuilder:
+    """Port of TypeScript AncestryBuilder for tree-sitter YAML."""
+
+    def __init__(self, path: list = None, index: int = None):
+        self._path = path or []
+        self._index = index if index is not None else len(self._path) - 1
+
+    def parent(self, expected_type=None):
+        """Move up path, optionally asserting type."""
+        self._index -= 1
+        current = self.get()
+        # Skip pair nodes unless explicitly expected
+        if current and current.type == 'block_mapping_pair':
+            if expected_type != 'pair':
+                self._index -= 1
+        # Type assertion
+        if expected_type:
+            current = self.get()
+            if not current or current.type != expected_type:
+                self._index = float('-inf')
+        return self
+
+    def get(self):
+        """Get current node."""
+        if 0 <= self._index < len(self._path):
+            return self._path[int(self._index)]
+        return None
+#+end_src
+
+****** pygls Integration Example
+#+begin_src python
+from pygls.server import LanguageServer
+from tree_sitter_languages import get_parser
+
+class AnsibleLanguageServer:
+    def __init__(self):
+        self.server = LanguageServer('ansible-language-server', 'v1.0')
+        self.parser = get_parser('yaml')
+        self.trees = {}  # uri -> tree cache
+
+        @self.server.feature('textDocument/didOpen')
+        def did_open(params):
+            uri = params.textDocument.uri
+            text = params.textDocument.text
+            self.trees[uri] = self.parser.parse(text.encode('utf-8'))
+
+        @self.server.feature('textDocument/didChange')
+        def did_change(params):
+            uri = params.textDocument.uri
+            text = params.contentChanges[0]['text']
+            # Incremental parsing possible but full reparse is simple
+            self.trees[uri] = self.parser.parse(text.encode('utf-8'))
+#+end_src
+
+****** lsp-tree-sitter Assessment
+[[https://github.com/neomutt/lsp-tree-sitter][lsp-tree-sitter]] provides utilities for tree-sitter-based language servers:
+- Converts ASTs to JSON
+- Generates JSON schemas from grammars
+- ~1,400 weekly downloads (small community)
+- Limited YAML-specific features
+
+*Verdict:* Optional utility layer. Custom node navigation (like =AncestryBuilder=) will still be needed.
+
 **** MAYBE Ansible Keyword lookup
 :PROPERTIES:
 :ID:       fb2b5a75-8902-40ff-bb18-a37a6af56e1a
@@ -137,8 +430,406 @@ Benefits:
 - Graceful degradation when Ansible not installed
 - Documentation strings preserved (Ansible internals don't include user-facing docs)
 
+***** DONE Ansible Keywords Port
+CLOSED: [2026-01-28 Tue]
+:PROPERTIES:
+:ID:       a1b2c3d4-e5f6-7890-1234-567890abcdef
+:END:
+
+- Note taken on [2026-01-28 Wed 21:25] \\
+  Would it be reasonable to grab these keywords and datatypes from Ansible internals now that we're in Python? I am aware those API's aren't public but this is a closely-related tool and the maintenance burden is justifiable.
+Ported [[file:src/utils/ansible.ts][src/utils/ansible.ts]] (722 lines) to [[file:src/ansible_ls/utils/ansible_keywords.py][src/ansible_ls/utils/ansible_keywords.py]]
+
+****** Ansible Internal API Research
+:PROPERTIES:
+:CREATED:  [2026-01-28 Tue]
+:END:
+
+*Recommendation: Use hybrid approach - dynamic validation from Ansible internals with static documentation.*
+
+******* Where Ansible Defines Keywords
+
+Ansible defines play/task/block/role keywords as class attributes using a descriptor pattern:
+
+| Context | Module                              | Class            | Count |
+|---------+-------------------------------------+------------------+-------|
+| Play    | =ansible.playbook.play=               | =Play=             |    42 |
+| Task    | =ansible.playbook.task=               | =Task=             |    42 |
+| Block   | =ansible.playbook.block=              | =Block=            |    31 |
+| Role    | =ansible.playbook.role.definition=    | =RoleDefinition=   |    26 |
+
+These are built dynamically via =FieldAttributeBase._fattributes()= which introspects the class hierarchy and collects all =Attribute= descriptor instances.
+
+******* Accessibility via Python Imports
+
+*YES - Fully accessible and read-only:*
+#+begin_src python
+import ansible.playbook.play as play_mod
+import ansible.playbook.task as task_mod
+import ansible.playbook.block as block_mod
+import ansible.playbook.role.definition as role_def
+
+# Get keywords for each context
+play_keywords = play_mod.Play.fattributes          # dict[str, Attribute]
+task_keywords = task_mod.Task.fattributes          # dict[str, Attribute]
+block_keywords = block_mod.Block.fattributes       # dict[str, Attribute]
+role_keywords = role_def.RoleDefinition.fattributes # dict[str, Attribute]
+
+# Just the keys
+play_kw_list = list(play_keywords.keys())
+#+end_src
+
+The =fattributes= property is a =@ClassProperty= providing cached, read-only access.
+
+******* Attribute Metadata Available
+
+Each keyword has rich metadata:
+#+begin_src python
+attr = play_keywords['name']
+print(attr.isa)        # 'string' - type constraint
+print(attr.required)   # False - whether required
+print(attr.default)    # default value
+print(attr.private)    # False - internal-only flag
+print(attr.alias)      # Alternative name (if aliased)
+print(attr.priority)   # Parse order
+print(attr.listof)     # Element type for lists
+#+end_src
+
+******* Stability Assessment
+
+*Official Position:* Ansible's internal APIs are *not publicly supported*. Breaking changes possible.
+
+*Practical Assessment:* *LOW RISK* for language server use
+- Attribute system is core to playbook parsing since Ansible 2.0
+- Used throughout Ansible internally, changes would be disruptive
+- Introspection mechanism (Python MRO + @cache) is extremely stable
+- Most changes are additive (new keywords)
+
+*Risk Scenarios:*
+| Scenario                        | Risk       | Mitigation                        |
+|---------------------------------+------------+-----------------------------------|
+| New keywords added              | Safe       | Additive change                   |
+| Keywords marked private         | Safe       | Filter with =attr.private == False= |
+| Keywords removed                | Rare       | Would break existing playbooks    |
+| Attribute class structure change | Very rare | Wrap in try/except for fallback   |
+
+******* Discrepancies Found (Ansible 2.20+ vs TypeScript LS)
+
+| Context | Missing from LS          | Extra in LS                       |
+|---------+--------------------------+-----------------------------------|
+| Play    | =validate_argspec=         | (none)                            |
+| Task    | =async_val=, =loop_with=     | =listen=, =local_action=            |
+| Block   | (perfect match)          | (perfect match)                   |
+| Role    | =role=                     | =delegate_facts=, =delegate_to=     |
+
+Notes:
+- =async_val=, =loop_with= are internal/private (correct to exclude)
+- =listen= is handler-only (correct to include for handlers)
+- =local_action= is deprecated syntax (keep for compatibility)
+
+******* Recommended Implementation
+:PROPERTIES:
+:ID:       0dd41fe8-4f6d-4ff9-94b9-bbc6219de1f3
+:END:
+
+*Hybrid approach:* Dynamic keyword loading with static documentation fallback.
+
+See [[file:src/ansible_ls/utils/ansible_dynamic.py][src/ansible_ls/utils/ansible_dynamic.py]] for the full implementation which includes:
+
+- =KeywordMeta=: Frozen dataclass with =name=, =isa=, =required=, =default=, =listof=, =alias=
+- =DynamicKeywords=: Container with =play=, =task=, =block=, =role= dicts + =source= and =ansible_version=
+- =load_keywords()=: Cached loader with fallback (returns =DynamicKeywords=)
+- =get_keyword_names(context)=: Get =frozenset= of keyword names for a context
+- =get_keyword_meta(keyword, context)=: Get =KeywordMeta= or =None=
+- =is_valid_keyword(keyword, context)=: Check validity (handles =with_*= special case)
+- =validate_keywords_against_ansible()=: Compare static vs dynamic for drift detection
+
+Core loading logic:
+#+begin_src python
+@cache
+def load_keywords() -> DynamicKeywords:
+    """Load from Ansible if available, else static fallback."""
+    result = _load_from_ansible()
+    if result is not None:
+        return result
+    return _load_from_static()
+#+end_src
+
+******* Benefits of Hybrid Approach
+
+| Benefit                      | Static Only | Dynamic Only | Hybrid |
+|------------------------------+-------------+--------------+--------|
+| No maintenance of keywords   | ✗           | ✓            | ✓      |
+| Works without Ansible        | ✓           | ✗            | ✓      |
+| Type information available   | ✗           | ✓            | ✓      |
+| Matches installed version    | ✗           | ✓            | ✓      |
+| Documentation strings        | ✓           | ✗            | ✓      |
+| Graceful degradation         | N/A         | ✗            | ✓      |
+
+******* Conclusion
+
+Use dynamic loading as primary source with static fallback. Keep static documentation
+strings (Ansible =Attribute= objects don't include user-facing docs). This gives:
+- Zero maintenance for keyword lists
+- Always in sync with user's installed Ansible version
+- Rich type metadata for validation and completion
+- Graceful fallback when Ansible unavailable
+
+****** TODO Design Decisions
+:PROPERTIES:
+:ID:       680b0990-f320-4ac7-975c-08057d7ae76b
+:END:
+
+- Note taken on [2026-01-29 Thu 13:00] \\
+  We already have a Python LSP dependency. If it defines this datatype we should use that.
+| TypeScript                              | Python                            | Rationale                          |
+|-----------------------------------------+-----------------------------------+------------------------------------|
+| =Map<string, string \vert MarkupContent>= | =dict[str, KeywordDoc]=             | Simpler, same semantics            |
+| =MarkupKind= from LSP                     | Custom =MarkupKind= enum            | Avoid LSP dependency for data      |
+| Static keywords only                    | Hybrid: dynamic + static fallback | Auto-sync with installed Ansible   |
+| No type metadata                        | =KeywordMeta= with =isa=, =required=    | Rich validation from Ansible attrs |
+| Computed at runtime                     | Cached at first access (=@cache=)   | Immutable, single load             |
+
+******* Implementation Files
+
+| File                          | Purpose                                            |
+|-------------------------------+----------------------------------------------------|
+| =ansible_keywords.py=           | Static keyword definitions with documentation      |
+| =ansible_dynamic.py=            | Dynamic loader with fallback, type metadata        |
+
+******* Usage Pattern
+
+#+begin_src python
+from ansible_ls.utils.ansible_dynamic import (
+    load_keywords,
+    is_valid_keyword,
+    get_keyword_meta,
+)
+
+# Check source (ansible or static fallback)
+kw = load_keywords()
+print(f"Using {kw.source}, Ansible {kw.ansible_version}")
+
+# Validate a keyword
+if is_valid_keyword("become", "task"):
+    meta = get_keyword_meta("become", "task")
+    print(f"become: type={meta.isa}, required={meta.required}")
+
+# For documentation, use static module
+from ansible_ls.utils.ansible_keywords import get_keyword_documentation
+doc = get_keyword_documentation("become", "task")
+#+end_src
+
+******* Validation Output (Ansible 2.20.1)
+
+#+begin_src json
+{
+  "ansible_version": "2.20.1",
+  "play": {
+    "missing_from_static": ["validate_argspec"],
+    "extra_in_static": []
+  },
+  "task": {
+    "missing_from_static": ["async_val"],
+    "extra_in_static": ["listen", "local_action"]
+  },
+  "block": {
+    "missing_from_static": [],
+    "extra_in_static": []
+  },
+  "role": {
+    "missing_from_static": ["role"],
+    "extra_in_static": ["delegate_facts", "delegate_to"]
+  }
+}
+#+end_src
+
+Notes on discrepancies:
+- =async_val=: Internal keyword (=async= is reserved in Python), correctly excluded
+- =listen=: Handler-only keyword, intentionally included for handler completions
+- =local_action=: Deprecated syntax, kept for backwards compatibility
+- =validate_argspec=: New in recent Ansible, should add to static
+- =role=: Self-reference in role definitions, should add to static
+- =delegate_facts=, =delegate_to=: Not valid in role context per Ansible internals
+
+****** Keyword Categories
+
+| Dictionary                    | Count | Purpose                              |
+|-------------------------------+-------+--------------------------------------|
+| =PLAY_KEYWORDS=                 |    43 | Valid at play level                  |
+| =ROLE_KEYWORDS=                 |    26 | Valid in role definitions            |
+| =BLOCK_KEYWORDS=                |    30 | Valid in block/rescue/always         |
+| =TASK_KEYWORDS=                 |    42 | Valid in tasks                       |
+| =PLAY_EXCLUSIVE_KEYWORDS=       |    17 | Only valid in plays (derived)        |
+| =PLAY_WITHOUT_TASK_KEYWORDS=    |    20 | Play keywords minus task (derived)   |
+
+****** Helper Functions
+
+#+begin_src python
+def is_task_keyword(value: str) -> bool:
+    """Check if value is a task keyword or starts with 'with_'."""
+    return value in TASK_KEYWORDS or value.startswith("with_")
+
+def get_keyword_documentation(keyword: str, context: str) -> KeywordDoc | None:
+    """Get documentation for keyword in context ('play', 'role', 'block', 'task')."""
+    ...
+#+end_src
+
+****** Test Coverage
+
+#+begin_src shell :results raw :wrap example
+uv run pytest tests/utils/test_ansible_keywords.py -v --tb=no | tail -30
+#+end_src
+
+#+RESULTS:
+#+begin_example
+tests/utils/test_ansible_keywords.py::TestKeywordMaps::test_play_keywords_not_empty PASSED
+tests/utils/test_ansible_keywords.py::TestKeywordMaps::test_task_keywords_not_empty PASSED
+tests/utils/test_ansible_keywords.py::TestKeywordMaps::test_block_keywords_not_empty PASSED
+tests/utils/test_ansible_keywords.py::TestKeywordMaps::test_role_keywords_not_empty PASSED
+tests/utils/test_ansible_keywords.py::TestKeywordMaps::test_common_keywords_present PASSED
+tests/utils/test_ansible_keywords.py::TestKeywordMaps::test_play_exclusive_keywords PASSED
+tests/utils/test_ansible_keywords.py::TestKeywordMaps::test_task_specific_keywords PASSED
+tests/utils/test_ansible_keywords.py::TestKeywordMaps::test_block_specific_keywords PASSED
+tests/utils/test_ansible_keywords.py::TestMarkupContent::test_some_keywords_have_markup PASSED
+tests/utils/test_ansible_keywords.py::TestMarkupContent::test_plain_string_documentation PASSED
+tests/utils/test_ansible_keywords.py::TestMarkupContent::test_markup_content_frozen PASSED
+tests/utils/test_ansible_keywords.py::TestIsTaskKeyword::test_known_task_keyword PASSED
+tests/utils/test_ansible_keywords.py::TestIsTaskKeyword::test_with_prefix_keywords PASSED
+tests/utils/test_ansible_keywords.py::TestIsTaskKeyword::test_unknown_keyword PASSED
+tests/utils/test_ansible_keywords.py::TestIsTaskKeyword::test_play_only_keyword PASSED
+tests/utils/test_ansible_keywords.py::TestHelperFunctions::test_is_play_keyword PASSED
+tests/utils/test_ansible_keywords.py::TestHelperFunctions::test_is_block_keyword PASSED
+tests/utils/test_ansible_keywords.py::TestHelperFunctions::test_is_role_keyword PASSED
+tests/utils/test_ansible_keywords.py::TestHelperFunctions::test_get_keyword_documentation PASSED
+tests/utils/test_ansible_keywords.py::TestHelperFunctions::test_get_keyword_text_string PASSED
+tests/utils/test_ansible_keywords.py::TestHelperFunctions::test_get_keyword_text_markup PASSED
+tests/utils/test_ansible_keywords.py::TestPlayWithoutTaskKeywords::test_excludes_task_keywords PASSED
+tests/utils/test_ansible_keywords.py::TestPlayWithoutTaskKeywords::test_includes_play_exclusive PASSED
+
+23 passed
+#+end_example
+
 **** Prefer Python APIs over subprocess management
 Examples:
+| Command              | Approach                | Rationale                        |
+|----------------------+-------------------------+----------------------------------|
+| Version detection    | =importlib.metadata=      | No subprocess, fast, reliable    |
+| ansible-lint         | subprocess + JSON parse | Only stable interface            |
+| Syntax check         | subprocess              | Thread-safe, stable              |
+| Module docs          | =ansible-runner=          | Stable Python API                |
+| Container management | =podman-py=               | Type-safe, async support         |
+
+***** DONE External Command Integration
+CLOSED: [2026-01-28 Tue]
+:PROPERTIES:
+:ID:       c44785a8-6794-445f-80f4-ebc6e617eb5c
+:END:
+
+- Note taken on [2026-01-28 Wed 18:01] \\
+  Do all of these have API or python library options? It would be nice to trim the process management and hit libraris.
+The server spawns external processes:
+
+| Command                          | Purpose                 | Python API?              |
+|----------------------------------+-------------------------+--------------------------|
+| =ansible --version=                | Detect installation     | *Yes* - importlib.metadata |
+| =ansible-lint=                     | Playbook linting        | *No* - subprocess only     |
+| =ansible-playbook --syntax-check=  | Fallback validation     | *Limited* - unstable API   |
+| =podman/docker run=                | Containerized execution | *Yes* - podman-py          |
+
+****** API Availability Research
+:PROPERTIES:
+:CREATED:  [2026-01-28 Tue]
+:END:
+
+******* ansible --version → importlib.metadata (Recommended)
+#+begin_src python
+import importlib.metadata
+import sys
+
+def get_ansible_metadata() -> dict:
+    """Get Ansible version info without subprocess."""
+    metadata = {}
+
+    try:
+        metadata['ansible_version'] = importlib.metadata.version('ansible')
+    except importlib.metadata.PackageNotFoundError:
+        metadata['ansible_version'] = None
+
+    try:
+        metadata['ansible_core_version'] = importlib.metadata.version('ansible-core')
+    except importlib.metadata.PackageNotFoundError:
+        metadata['ansible_core_version'] = None
+
+    metadata['python_version'] = f"{sys.version_info.major}.{sys.version_info.minor}"
+
+    try:
+        import ansible
+        import os
+        metadata['ansible_location'] = os.path.dirname(ansible.__file__)
+    except ImportError:
+        metadata['ansible_location'] = None
+
+    return metadata
+#+end_src
+
+******* ansible-lint → Subprocess Only
+*No public Python API.* The project explicitly states it's not a library.
+- CLI with JSON output (=-f codeclimate=) is the stable interface
+- Keep subprocess approach; parse JSON output
+#+begin_src python
+import subprocess
+import json
+
+def run_ansible_lint(playbook_path: str, config_path: str = None) -> list:
+    """Run ansible-lint and parse JSON output."""
+    cmd = ["ansible-lint", "-f", "codeclimate", "--offline", "--nocolor"]
+    if config_path:
+        cmd.extend(["-c", config_path])
+    cmd.append(playbook_path)
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.stdout:
+        return json.loads(result.stdout)
+    return []
+#+end_src
+
+******* ansible-playbook --syntax-check → Subprocess Recommended
+Ansible's Python API exists but is *officially unsupported for external use*:
+#+begin_quote
+"This API is intended for internal Ansible use. Ansible may make changes to this API at any time that could break backward compatibility."
+— [[https://docs.ansible.com/projects/ansible-core/2.17/dev_guide/developing_api.html][Ansible Core Python API Docs]]
+#+end_quote
+
+*Thread safety warning:* "Because Ansible relies on forking processes, this API is not thread safe."
+
+Keep subprocess for syntax-check — more stable for a multi-threaded language server.
+
+******* ansible-doc → ansible-runner Library
+=ansible-runner= provides a stable Python interface for documentation:
+#+begin_src python
+import ansible_runner
+import json
+
+def get_module_docs(module_name: str) -> dict:
+    """Get module documentation via ansible-runner."""
+    output, errors = ansible_runner.get_plugin_docs(
+        plugin_names=[module_name],
+        plugin_type='module',
+        response_format='json'
+    )
+    return json.loads(output) if output else {}
+
+def list_modules() -> list:
+    """List available modules."""
+    output, errors = ansible_runner.get_plugin_list(
+        list_files=False,
+        response_format='json'
+    )
+    return json.loads(output) if output else []
+#+end_src
+
+******* Summary: What to Use
 | Command              | Approach                | Rationale                        |
 |----------------------+-------------------------+----------------------------------|
 | Version detection    | =importlib.metadata=      | No subprocess, fast, reliable    |
@@ -212,9 +903,9 @@ ansible-language-server/
 
 
 
-**** Core Services
+***** Core Services
 
-***** AnsibleLanguageService
+****** AnsibleLanguageService
 The main LSP orchestrator. Initializes connection, registers handlers, routes requests.
 
 #+begin_src typescript
@@ -248,16 +939,16 @@ async def completion(params: types.CompletionParams) -> types.CompletionList:
     pass
 #+end_src
 
-***** WorkspaceManager
+****** WorkspaceManager
 Manages multi-folder workspace contexts. Each folder gets its own =WorkspaceFolderContext= with services.
 
-***** DocsLibrary
+****** DocsLibrary
 Caches Ansible module documentation. Discovers modules, parses YAML docs, handles FQCN lookups.
 
-***** ExecutionEnvironment
+****** ExecutionEnvironment
 Most complex service. Manages Podman/Docker containers for isolated Ansible execution.
 
-**** LSP Features Implemented
+***** LSP Features Implemented
 
 - =textDocumentSync=: Incremental updates
 - =semanticTokensProvider=: Syntax highlighting
@@ -265,9 +956,9 @@ Most complex service. Manages Podman/Docker containers for isolated Ansible exec
 - =completionProvider=: Auto-completion with resolve
 - =definitionProvider=: Go-to-definition
 
-**** Data Structures
+***** Data Structures
 
-***** IModuleMetadata
+****** IModuleMetadata
 #+begin_src typescript
 interface IModuleMetadata {
   source: string;
@@ -294,7 +985,7 @@ class ModuleMetadata:
     documentation: Optional["ModuleDocumentation"] = None
 #+end_src
 
-***** IOption (module parameter)
+****** IOption (module parameter)
 #+begin_src python
 @dataclass
 class Option:
@@ -308,7 +999,7 @@ class Option:
     suboptions: dict[str, "Option"] = field(default_factory=dict)
 #+end_src
 
-**** Test Structure
+***** Test Structure
 
 Current: Mocha + Chai with ts-node
 
@@ -319,7 +1010,7 @@ Current: Mocha + Chai with ts-node
 | =validationProvider.test.ts=    | Multiple validation paths     |
 | =hoverProvider.test.ts=         | Documentation retrieval       |
 
-***** Test Mapping to pytest
+****** Test Mapping to pytest
 
 | Mocha               | pytest                           |
 |---------------------+----------------------------------|
@@ -350,559 +1041,13 @@ class TestCompletionProvider:
         assert len(result.items) > 0
 #+end_src
 
-**** Porting Tiers
-
-***** DONE Tier 1: Foundation (Port First)
-CLOSED: [2026-01-28 Tue]
-:PROPERTIES:
-:ID:       f1a2b3c4-d5e6-7890-abcd-ef1234567891
-:END:
-- [X] =interfaces/module.ts= - Data structures → =src/ansible_ls/models/module.py=
-- [ ] =interfaces/extensionSettings.ts= - Settings (TODO)
-- [X] =utils/ansible.ts= - Keyword definitions → =src/ansible_ls/utils/ansible_keywords.py=
-- [X] =test/helper.ts= - Test infrastructure → =tests/conftest.py=
-
-****** DONE Ansible Keywords Port
-CLOSED: [2026-01-28 Tue]
-:PROPERTIES:
-:ID:       a1b2c3d4-e5f6-7890-1234-567890abcdef
-:END:
-
-- Note taken on [2026-01-28 Wed 21:25] \\
-  Would it be reasonable to grab these keywords and datatypes from Ansible internals now that we're in Python? I am aware those API's aren't public but this is a closely-related tool and the maintenance burden is justifiable.
-Ported =src/utils/ansible.ts= (722 lines) to =src/ansible_ls/utils/ansible_keywords.py=.
-
-******* Ansible Internal API Research
-:PROPERTIES:
-:CREATED:  [2026-01-28 Tue]
-:END:
-
-*Recommendation: Use hybrid approach - dynamic validation from Ansible internals with static documentation.*
-
-******** Where Ansible Defines Keywords
-
-Ansible defines play/task/block/role keywords as class attributes using a descriptor pattern:
-
-| Context | Module                              | Class            | Count |
-|---------+-------------------------------------+------------------+-------|
-| Play    | =ansible.playbook.play=               | =Play=             |    42 |
-| Task    | =ansible.playbook.task=               | =Task=             |    42 |
-| Block   | =ansible.playbook.block=              | =Block=            |    31 |
-| Role    | =ansible.playbook.role.definition=    | =RoleDefinition=   |    26 |
-
-These are built dynamically via =FieldAttributeBase._fattributes()= which introspects the class hierarchy and collects all =Attribute= descriptor instances.
-
-******** Accessibility via Python Imports
-
-*YES - Fully accessible and read-only:*
-#+begin_src python
-import ansible.playbook.play as play_mod
-import ansible.playbook.task as task_mod
-import ansible.playbook.block as block_mod
-import ansible.playbook.role.definition as role_def
-
-# Get keywords for each context
-play_keywords = play_mod.Play.fattributes          # dict[str, Attribute]
-task_keywords = task_mod.Task.fattributes          # dict[str, Attribute]
-block_keywords = block_mod.Block.fattributes       # dict[str, Attribute]
-role_keywords = role_def.RoleDefinition.fattributes # dict[str, Attribute]
-
-# Just the keys
-play_kw_list = list(play_keywords.keys())
-#+end_src
-
-The =fattributes= property is a =@ClassProperty= providing cached, read-only access.
-
-******** Attribute Metadata Available
-
-Each keyword has rich metadata:
-#+begin_src python
-attr = play_keywords['name']
-print(attr.isa)        # 'string' - type constraint
-print(attr.required)   # False - whether required
-print(attr.default)    # default value
-print(attr.private)    # False - internal-only flag
-print(attr.alias)      # Alternative name (if aliased)
-print(attr.priority)   # Parse order
-print(attr.listof)     # Element type for lists
-#+end_src
-
-******** Stability Assessment
-
-*Official Position:* Ansible's internal APIs are *not publicly supported*. Breaking changes possible.
-
-*Practical Assessment:* *LOW RISK* for language server use
-- Attribute system is core to playbook parsing since Ansible 2.0
-- Used throughout Ansible internally, changes would be disruptive
-- Introspection mechanism (Python MRO + @cache) is extremely stable
-- Most changes are additive (new keywords)
-
-*Risk Scenarios:*
-| Scenario                        | Risk       | Mitigation                        |
-|---------------------------------+------------+-----------------------------------|
-| New keywords added              | Safe       | Additive change                   |
-| Keywords marked private         | Safe       | Filter with =attr.private == False= |
-| Keywords removed                | Rare       | Would break existing playbooks    |
-| Attribute class structure change | Very rare | Wrap in try/except for fallback   |
-
-******** Discrepancies Found (Ansible 2.20+ vs TypeScript LS)
-
-| Context | Missing from LS          | Extra in LS                       |
-|---------+--------------------------+-----------------------------------|
-| Play    | =validate_argspec=         | (none)                            |
-| Task    | =async_val=, =loop_with=     | =listen=, =local_action=            |
-| Block   | (perfect match)          | (perfect match)                   |
-| Role    | =role=                     | =delegate_facts=, =delegate_to=     |
-
-Notes:
-- =async_val=, =loop_with= are internal/private (correct to exclude)
-- =listen= is handler-only (correct to include for handlers)
-- =local_action= is deprecated syntax (keep for compatibility)
-
-******** Recommended Implementation
-
-*Hybrid approach:* Dynamic keyword loading with static documentation fallback.
-
-See =src/ansible_ls/utils/ansible_dynamic.py= for the full implementation which includes:
-
-- =KeywordMeta=: Frozen dataclass with =name=, =isa=, =required=, =default=, =listof=, =alias=
-- =DynamicKeywords=: Container with =play=, =task=, =block=, =role= dicts + =source= and =ansible_version=
-- =load_keywords()=: Cached loader with fallback (returns =DynamicKeywords=)
-- =get_keyword_names(context)=: Get =frozenset= of keyword names for a context
-- =get_keyword_meta(keyword, context)=: Get =KeywordMeta= or =None=
-- =is_valid_keyword(keyword, context)=: Check validity (handles =with_*= special case)
-- =validate_keywords_against_ansible()=: Compare static vs dynamic for drift detection
-
-Core loading logic:
-#+begin_src python
-@cache
-def load_keywords() -> DynamicKeywords:
-    """Load from Ansible if available, else static fallback."""
-    result = _load_from_ansible()
-    if result is not None:
-        return result
-    return _load_from_static()
-#+end_src
-
-******** Benefits of Hybrid Approach
-
-| Benefit                      | Static Only | Dynamic Only | Hybrid |
-|------------------------------+-------------+--------------+--------|
-| No maintenance of keywords   | ✗           | ✓            | ✓      |
-| Works without Ansible        | ✓           | ✗            | ✓      |
-| Type information available   | ✗           | ✓            | ✓      |
-| Matches installed version    | ✗           | ✓            | ✓      |
-| Documentation strings        | ✓           | ✗            | ✓      |
-| Graceful degradation         | N/A         | ✗            | ✓      |
-
-******** Conclusion
-
-Use dynamic loading as primary source with static fallback. Keep static documentation
-strings (Ansible =Attribute= objects don't include user-facing docs). This gives:
-- Zero maintenance for keyword lists
-- Always in sync with user's installed Ansible version
-- Rich type metadata for validation and completion
-- Graceful fallback when Ansible unavailable
-
-******* Design Decisions
-
-| TypeScript                              | Python                             | Rationale                            |
-|-----------------------------------------+------------------------------------+--------------------------------------|
-| =Map<string, string \vert MarkupContent>=   | =dict[str, KeywordDoc]=              | Simpler, same semantics              |
-| =MarkupKind= from LSP                     | Custom =MarkupKind= enum             | Avoid LSP dependency for data        |
-| Static keywords only                    | Hybrid: dynamic + static fallback  | Auto-sync with installed Ansible     |
-| No type metadata                        | =KeywordMeta= with =isa=, =required=     | Rich validation from Ansible attrs   |
-| Computed at runtime                     | Cached at first access (=@cache=)    | Immutable, single load               |
-
-******** Implementation Files
-
-| File                          | Purpose                                            |
-|-------------------------------+----------------------------------------------------|
-| =ansible_keywords.py=           | Static keyword definitions with documentation      |
-| =ansible_dynamic.py=            | Dynamic loader with fallback, type metadata        |
-
-******** Usage Pattern
-
-#+begin_src python
-from ansible_ls.utils.ansible_dynamic import (
-    load_keywords,
-    is_valid_keyword,
-    get_keyword_meta,
-)
-
-# Check source (ansible or static fallback)
-kw = load_keywords()
-print(f"Using {kw.source}, Ansible {kw.ansible_version}")
-
-# Validate a keyword
-if is_valid_keyword("become", "task"):
-    meta = get_keyword_meta("become", "task")
-    print(f"become: type={meta.isa}, required={meta.required}")
-
-# For documentation, use static module
-from ansible_ls.utils.ansible_keywords import get_keyword_documentation
-doc = get_keyword_documentation("become", "task")
-#+end_src
-
-******** Validation Output (Ansible 2.20.1)
-
-#+begin_src json
-{
-  "ansible_version": "2.20.1",
-  "play": {
-    "missing_from_static": ["validate_argspec"],
-    "extra_in_static": []
-  },
-  "task": {
-    "missing_from_static": ["async_val"],
-    "extra_in_static": ["listen", "local_action"]
-  },
-  "block": {
-    "missing_from_static": [],
-    "extra_in_static": []
-  },
-  "role": {
-    "missing_from_static": ["role"],
-    "extra_in_static": ["delegate_facts", "delegate_to"]
-  }
-}
-#+end_src
-
-Notes on discrepancies:
-- =async_val=: Internal keyword (=async= is reserved in Python), correctly excluded
-- =listen=: Handler-only keyword, intentionally included for handler completions
-- =local_action=: Deprecated syntax, kept for backwards compatibility
-- =validate_argspec=: New in recent Ansible, should add to static
-- =role=: Self-reference in role definitions, should add to static
-- =delegate_facts=, =delegate_to=: Not valid in role context per Ansible internals
-
-******* Keyword Categories
-
-| Dictionary                    | Count | Purpose                              |
-|-------------------------------+-------+--------------------------------------|
-| =PLAY_KEYWORDS=                 |    43 | Valid at play level                  |
-| =ROLE_KEYWORDS=                 |    26 | Valid in role definitions            |
-| =BLOCK_KEYWORDS=                |    30 | Valid in block/rescue/always         |
-| =TASK_KEYWORDS=                 |    42 | Valid in tasks                       |
-| =PLAY_EXCLUSIVE_KEYWORDS=       |    17 | Only valid in plays (derived)        |
-| =PLAY_WITHOUT_TASK_KEYWORDS=    |    20 | Play keywords minus task (derived)   |
-
-******* Helper Functions
-
-#+begin_src python
-def is_task_keyword(value: str) -> bool:
-    """Check if value is a task keyword or starts with 'with_'."""
-    return value in TASK_KEYWORDS or value.startswith("with_")
-
-def get_keyword_documentation(keyword: str, context: str) -> KeywordDoc | None:
-    """Get documentation for keyword in context ('play', 'role', 'block', 'task')."""
-    ...
-#+end_src
-
-******* Test Coverage
-
-#+begin_src shell :results raw :wrap example
-uv run pytest tests/utils/test_ansible_keywords.py -v --tb=no | tail -30
-#+end_src
-
-#+RESULTS:
-#+begin_example
-tests/utils/test_ansible_keywords.py::TestKeywordMaps::test_play_keywords_not_empty PASSED
-tests/utils/test_ansible_keywords.py::TestKeywordMaps::test_task_keywords_not_empty PASSED
-tests/utils/test_ansible_keywords.py::TestKeywordMaps::test_block_keywords_not_empty PASSED
-tests/utils/test_ansible_keywords.py::TestKeywordMaps::test_role_keywords_not_empty PASSED
-tests/utils/test_ansible_keywords.py::TestKeywordMaps::test_common_keywords_present PASSED
-tests/utils/test_ansible_keywords.py::TestKeywordMaps::test_play_exclusive_keywords PASSED
-tests/utils/test_ansible_keywords.py::TestKeywordMaps::test_task_specific_keywords PASSED
-tests/utils/test_ansible_keywords.py::TestKeywordMaps::test_block_specific_keywords PASSED
-tests/utils/test_ansible_keywords.py::TestMarkupContent::test_some_keywords_have_markup PASSED
-tests/utils/test_ansible_keywords.py::TestMarkupContent::test_plain_string_documentation PASSED
-tests/utils/test_ansible_keywords.py::TestMarkupContent::test_markup_content_frozen PASSED
-tests/utils/test_ansible_keywords.py::TestIsTaskKeyword::test_known_task_keyword PASSED
-tests/utils/test_ansible_keywords.py::TestIsTaskKeyword::test_with_prefix_keywords PASSED
-tests/utils/test_ansible_keywords.py::TestIsTaskKeyword::test_unknown_keyword PASSED
-tests/utils/test_ansible_keywords.py::TestIsTaskKeyword::test_play_only_keyword PASSED
-tests/utils/test_ansible_keywords.py::TestHelperFunctions::test_is_play_keyword PASSED
-tests/utils/test_ansible_keywords.py::TestHelperFunctions::test_is_block_keyword PASSED
-tests/utils/test_ansible_keywords.py::TestHelperFunctions::test_is_role_keyword PASSED
-tests/utils/test_ansible_keywords.py::TestHelperFunctions::test_get_keyword_documentation PASSED
-tests/utils/test_ansible_keywords.py::TestHelperFunctions::test_get_keyword_text_string PASSED
-tests/utils/test_ansible_keywords.py::TestHelperFunctions::test_get_keyword_text_markup PASSED
-tests/utils/test_ansible_keywords.py::TestPlayWithoutTaskKeywords::test_excludes_task_keywords PASSED
-tests/utils/test_ansible_keywords.py::TestPlayWithoutTaskKeywords::test_includes_play_exclusive PASSED
-
-23 passed
-#+end_example
-
-***** DONE Tier 2: Core Utilities
-CLOSED: [2026-01-28 Tue]
-:PROPERTIES:
-:ID:       187f1b86-7e65-420d-ae76-a42dfeed799b
-:END:
-- Note taken on [2026-01-28 Wed 17:54] \\
-  Would [[https://tree-sitter.github.io/tree-sitter/][tree-sitter]] be a good fit for YAML AST navigation? Maybe with the [[https://github.com/ikatyang/tree-sitter-yaml][tree-sitter-yaml]] grammar and [[https://github.com/neomutt/lsp-tree-sitter][lsp-tree-sitter]]?
-
-- =utils/yaml.ts= - YAML AST navigation (critical, complex)
-- =utils/docsParser.ts= - Documentation parsing
-- =utils/commandRunner.ts= - External command execution
-
-****** Tree-sitter Research Findings
-:PROPERTIES:
-:CREATED:  [2026-01-28 Tue]
-:END:
-
-*Recommendation: Use tree-sitter-yaml with py-tree-sitter for YAML AST navigation.*
-
-******* Installation
-#+begin_src bash
-pip install tree-sitter tree-sitter-languages
-#+end_src
-
-******* tree-sitter vs ruamel.yaml Comparison
-
-| Feature              | tree-sitter-yaml             | ruamel.yaml                  |
-|----------------------+------------------------------+------------------------------|
-| Position Tracking    | Native (start/end points)    | Native (lc attrs)            |
-| Incremental Parsing  | Yes (efficient updates)      | No                           |
-| Parent Traversal     | Cursor-based                 | Direct parent refs           |
-| Performance          | Optimized (C implementation) | Pure Python (slower)         |
-| Language Server Fit  | Excellent                    | Good for read-only           |
-
-******* Core Pattern: Get Node at Position
-#+begin_src python
-from tree_sitter_languages import get_language, get_parser
-
-language = get_language('yaml')
-parser = get_parser('yaml')
-
-def get_node_at_position(tree, offset: int):
-    """Get deepest node containing the byte offset."""
-    def walk(node):
-        if node.start_byte <= offset < node.end_byte:
-            for child in node.children:
-                result = walk(child)
-                if result:
-                    return result
-            return node
-        return None
-    return walk(tree.root_node)
-
-# Parse and query
-tree = parser.parse(yaml_content.encode('utf-8'))
-node = get_node_at_position(tree, cursor_offset)
-print(f"Type: {node.type}, Text: {node.text.decode()}")
-print(f"Position: line {node.start_point[0]}, col {node.start_point[1]}")
-#+end_src
-
-******* AncestryBuilder Port Pattern
-#+begin_src python
-class AncestryBuilder:
-    """Port of TypeScript AncestryBuilder for tree-sitter YAML."""
-
-    def __init__(self, path: list = None, index: int = None):
-        self._path = path or []
-        self._index = index if index is not None else len(self._path) - 1
-
-    def parent(self, expected_type=None):
-        """Move up path, optionally asserting type."""
-        self._index -= 1
-        current = self.get()
-        # Skip pair nodes unless explicitly expected
-        if current and current.type == 'block_mapping_pair':
-            if expected_type != 'pair':
-                self._index -= 1
-        # Type assertion
-        if expected_type:
-            current = self.get()
-            if not current or current.type != expected_type:
-                self._index = float('-inf')
-        return self
-
-    def get(self):
-        """Get current node."""
-        if 0 <= self._index < len(self._path):
-            return self._path[int(self._index)]
-        return None
-#+end_src
-
-******* pygls Integration Example
-#+begin_src python
-from pygls.server import LanguageServer
-from tree_sitter_languages import get_parser
-
-class AnsibleLanguageServer:
-    def __init__(self):
-        self.server = LanguageServer('ansible-language-server', 'v1.0')
-        self.parser = get_parser('yaml')
-        self.trees = {}  # uri -> tree cache
-
-        @self.server.feature('textDocument/didOpen')
-        def did_open(params):
-            uri = params.textDocument.uri
-            text = params.textDocument.text
-            self.trees[uri] = self.parser.parse(text.encode('utf-8'))
-
-        @self.server.feature('textDocument/didChange')
-        def did_change(params):
-            uri = params.textDocument.uri
-            text = params.contentChanges[0]['text']
-            # Incremental parsing possible but full reparse is simple
-            self.trees[uri] = self.parser.parse(text.encode('utf-8'))
-#+end_src
-
-******* lsp-tree-sitter Assessment
-[[https://github.com/neomutt/lsp-tree-sitter][lsp-tree-sitter]] provides utilities for tree-sitter-based language servers:
-- Converts ASTs to JSON
-- Generates JSON schemas from grammars
-- ~1,400 weekly downloads (small community)
-- Limited YAML-specific features
-
-*Verdict:* Optional utility layer. Custom node navigation (like =AncestryBuilder=) will still be needed.
-
-***** TODO Tier 3: Services
-:PROPERTIES:
-:ID:       c138f0e6-703f-4005-af7b-be59f03bf3df
-:END:
-- =services/settingsManager.ts=
-- =services/workspaceManager.ts=
-- =services/docsLibrary.ts=
-- =services/ansibleLint.ts=
-- =services/validationManager.ts=
-
-***** DONE Tier 4: Complex Services
-CLOSED: [2026-01-28 Tue]
-:PROPERTIES:
-:ID:       b3c8a3b7-2dff-4ebe-abcb-038942d7b008
-:END:
-- Note taken on [2026-01-28 Wed 17:53] \\
-  Is there a Python library that talks to Podman for this?
-- =services/executionEnvironment.ts= - Container management (536 lines)
-
-****** Podman Python Library Research
-:PROPERTIES:
-:CREATED:  [2026-01-28 Tue]
-:END:
-
-*Recommendation: Use [[https://github.com/containers/podman-py][podman-py]] (official Podman Python SDK).*
-
-******* Installation
-#+begin_src bash
-pip install podman  # podman-py v5.7.0 (Jan 2026)
-#+end_src
-
-******* Library vs Subprocess Comparison
-
-| Aspect           | podman-py (Library)          | subprocess                   |
-|------------------+------------------------------+------------------------------|
-| Error handling   | Structured exceptions        | Parse exit codes/stderr      |
-| Type safety      | Good (typed API)             | Poor                         |
-| Async support    | Yes (AsyncPodmanClient)      | Limited                      |
-| Streaming        | Native                       | Manual                       |
-| Performance      | ~10-20ms per op              | ~50-100ms (process spawn)    |
-| Dependencies     | 1 package                    | None                         |
-
-******* Basic Container Operations
-#+begin_src python
-from podman import PodmanClient
-
-class ExecutionEnvironment:
-    def __init__(self, image: str):
-        self.image = image
-        self.client = PodmanClient(
-            base_url="unix:///run/user/1000/podman/podman.sock"
-        )
-
-    def pull_image(self) -> bool:
-        """Pull container image."""
-        try:
-            self.client.images.pull(self.image)
-            return True
-        except Exception as e:
-            print(f"Pull failed: {e}")
-            return False
-
-    def run_container(self, name: str) -> bool:
-        """Run detached container with bash shell."""
-        try:
-            self.client.containers.run(
-                image=self.image,
-                name=name,
-                command=["bash"],
-                detach=True,
-                stdin=True,
-                environment=self._get_ansible_env(),
-                volumes=self._get_volume_mounts(),
-            )
-            return True
-        except Exception as e:
-            print(f"Run failed: {e}")
-            return False
-
-    def execute_command(self, container_name: str, cmd: list) -> tuple[int, str]:
-        """Execute command in running container."""
-        container = self.client.containers.get(container_name)
-        exit_code, output = container.exec_run(cmd=cmd, stdout=True, stderr=True)
-        return exit_code, output.decode() if output else ""
-
-    def cleanup(self, container_name: str) -> None:
-        """Stop and remove container."""
-        try:
-            container = self.client.containers.get(container_name)
-            container.stop(timeout=5)
-            container.remove()
-        except Exception:
-            pass  # Container may not exist
-#+end_src
-
-******* docker-py Compatibility
-=docker-py= can connect to Podman's Docker-compatible socket:
-#+begin_src python
-import docker
-client = docker.DockerClient(
-    base_url='unix:///run/user/1000/podman/podman.sock'
-)
-#+end_src
-*Caveats:* =docker.from_env()= unreliable with Podman; explicit =base_url= required.
-
-******* Hybrid Approach (Recommended)
-#+begin_src python
-import shutil
-from podman import PodmanClient
-
-class ExecutionEnvironment:
-    def __init__(self, settings: dict):
-        self.settings = settings
-        self.container_engine = self._detect_engine()
-        self.client = PodmanClient(...) if self.container_engine == "podman" else None
-
-    def _detect_engine(self) -> str:
-        """Detect podman or docker via shutil.which (no subprocess)."""
-        for engine in ["podman", "docker"]:
-            if shutil.which(engine):
-                return engine
-        raise RuntimeError("Neither podman nor docker found")
-#+end_src
-
-Use =podman-py= for container lifecycle, keep =subprocess= only for platform detection.
-
-***** TODO Tier 5: Providers
-:PROPERTIES:
-:ID:       19253c36-3092-49e8-a29f-a20bb8a878e0
-:END:
-- =providers/validationProvider.ts=
-- =providers/completionProvider.ts= (most complex at 666 lines)
-- =providers/hoverProvider.ts=
-- =providers/definitionProvider.ts=
-- =providers/semanticTokenProvider.ts=
-
-***** Tier 6: LSP Core
-- =ansibleLanguageService.ts=
-- =server.ts=
 
 *** Service Porting Guide
 :PROPERTIES:
 :CREATED:  [2026-01-29 Wed]
 :END:
+The services do the grunt work for the providers. So for example the DocumentFormatting provider calls ansible-lint.
+
 
 This section provides detailed porting notes for each service, including dependency graphs, Python code skeletons with =:tangle= directives, and implementation checklists.
 
@@ -1748,18 +1893,10 @@ async def run_ansible_lint(
     return []
 #+end_src
 
-***** Implementation Checklist: Validation
-
-- [ ] Implement =ValidationManager= with debouncing
-- [ ] Implement =run_ansible_lint= subprocess wrapper
-- [ ] Parse codeclimate JSON output to diagnostics
-- [ ] Implement syntax-check fallback
-- [ ] Handle execution environment (run lint in container)
-- [ ] Write tests with mock lint output
-
-*** Provider Porting Guide
+*** TODO Provider Porting Guide
 :PROPERTIES:
 :CREATED:  [2026-01-29 Wed]
+:ID:       3959b7e6-05ef-43be-802b-9b0651151af3
 :END:
 
 This section provides detailed porting notes for LSP feature providers.
@@ -2429,205 +2566,13 @@ def _get_value_completions(context: CompletionContext) -> list[types.CompletionI
 - [ ] Implement completion resolve for lazy documentation
 - [ ] Write extensive tests with fixture playbooks
 
-**** TODO Next Steps
-:PROPERTIES:
-:ID:       042d8753-3757-48a6-b5a0-251196171795
-:END:
-Research phase complete. Code skeletons documented. Ready for implementation.
-
-1. [X] Initialize Python project with =uv init=
-2. [X] Research tree-sitter for YAML AST (see Tier 2 findings)
-3. [X] Research podman-py for container management (see Tier 4 findings)
-4. [X] Research Ansible Python APIs (see External Command Integration)
-5. [X] Fix pyproject.toml build-system for entry points
-6. [X] Set up pytest infrastructure with fixtures from =test/helper.ts=
-7. [X] Port =utils/ansible.ts= keyword definitions (see [[*Ansible Keywords Port][Ansible Keywords Port]])
-8. [X] Port =interfaces/module.ts= to dataclasses (see =src/ansible_ls/models/module.py=)
-9. [X] Port =utils/yaml.ts= using tree-sitter-yaml with comprehensive tests (see [[*AncestryBuilder Wrapper Node Fix][AncestryBuilder Wrapper Node Fix]])
-10. [X] Document detailed porting notes with code skeletons (see [[*Service Porting Guide][Service Porting Guide]] and [[*Provider Porting Guide][Provider Porting Guide]])
-11. [ ] Tangle service skeletons and implement (=C-c C-v t= in Emacs)
-    - [ ] =SettingsManager= - settings caching and LSP config
-    - [ ] =WorkspaceManager= - multi-folder context
-    - [ ] =DocsLibrary= - module documentation cache
-    - [ ] =ValidationManager= - ansible-lint integration
-12. [ ] Tangle provider skeletons and implement
-    - [ ] =HoverProvider= - keyword and module docs on hover
-    - [ ] =DefinitionProvider= - go-to-definition for roles/includes
-    - [ ] =CompletionProvider= - context-aware completions
-
-***** Running Tests
-After tangling, set up environment and run tests:
-#+begin_src bash :results output :wrap example
-uv run pytest tests/ -v
-#+end_src
-
-#+RESULTS:
-#+begin_example
-============================= test session starts ==============================
-platform linux -- Python 3.12.12, pytest-9.0.2, pluggy-1.6.0
-cachedir: .pytest_cache
-rootdir: /home/chad/code/ansible-language-server
-configfile: pyproject.toml
-plugins: asyncio-1.3.0
-collected 59 items
-
-tests/utils/test_ansible_dynamic.py: 16 passed
-tests/utils/test_ansible_keywords.py: 23 passed
-tests/utils/test_yaml_utils.py: 9 passed
-
-============================== 59 passed in 0.33s ==============================
-#+end_example
-
 *** Appendix
 :PROPERTIES:
 :CREATED:  [2026-01-29 Wed]
 :END:
 
-**** YAML AST Navigation
 
-The =yaml.ts= module is critical. It navigates the YAML AST to determine cursor context (play vs task vs block level).
-
-#+begin_src typescript
-// TypeScript uses yaml npm package
-import { parseAllDocuments, YAMLMap, Pair } from "yaml";
-
-export function getPathAt(doc: Document, offset: number): Node[] {
-  // Navigate to node at cursor position
-  // Return path from root to target
-}
-#+end_src
-
-#+begin_src python
-# Python: ruamel.yaml preserves positions
-from ruamel.yaml import YAML
-from ruamel.yaml.comments import CommentedMap
-
-def get_path_at(doc: CommentedMap, offset: int) -> list:
-    """Navigate YAML AST to cursor position."""
-    # ruamel.yaml nodes have lc (line/column) attributes
-    # Use lc.line, lc.col for position tracking
-    pass
-#+end_src
-
-**** DONE External Command Integration
-CLOSED: [2026-01-28 Tue]
-:PROPERTIES:
-:ID:       c44785a8-6794-445f-80f4-ebc6e617eb5c
-:END:
-
-- Note taken on [2026-01-28 Wed 18:01] \\
-  Do all of these have API or python library options? It would be nice to trim the process management and hit libraris.
-The server spawns external processes:
-
-| Command                          | Purpose                 | Python API?              |
-|----------------------------------+-------------------------+--------------------------|
-| =ansible --version=                | Detect installation     | *Yes* - importlib.metadata |
-| =ansible-lint=                     | Playbook linting        | *No* - subprocess only     |
-| =ansible-playbook --syntax-check=  | Fallback validation     | *Limited* - unstable API   |
-| =podman/docker run=                | Containerized execution | *Yes* - podman-py          |
-
-***** API Availability Research
-:PROPERTIES:
-:CREATED:  [2026-01-28 Tue]
-:END:
-
-****** ansible --version → importlib.metadata (Recommended)
-#+begin_src python
-import importlib.metadata
-import sys
-
-def get_ansible_metadata() -> dict:
-    """Get Ansible version info without subprocess."""
-    metadata = {}
-
-    try:
-        metadata['ansible_version'] = importlib.metadata.version('ansible')
-    except importlib.metadata.PackageNotFoundError:
-        metadata['ansible_version'] = None
-
-    try:
-        metadata['ansible_core_version'] = importlib.metadata.version('ansible-core')
-    except importlib.metadata.PackageNotFoundError:
-        metadata['ansible_core_version'] = None
-
-    metadata['python_version'] = f"{sys.version_info.major}.{sys.version_info.minor}"
-
-    try:
-        import ansible
-        import os
-        metadata['ansible_location'] = os.path.dirname(ansible.__file__)
-    except ImportError:
-        metadata['ansible_location'] = None
-
-    return metadata
-#+end_src
-
-****** ansible-lint → Subprocess Only
-*No public Python API.* The project explicitly states it's not a library.
-- CLI with JSON output (=-f codeclimate=) is the stable interface
-- Keep subprocess approach; parse JSON output
-#+begin_src python
-import subprocess
-import json
-
-def run_ansible_lint(playbook_path: str, config_path: str = None) -> list:
-    """Run ansible-lint and parse JSON output."""
-    cmd = ["ansible-lint", "-f", "codeclimate", "--offline", "--nocolor"]
-    if config_path:
-        cmd.extend(["-c", config_path])
-    cmd.append(playbook_path)
-
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.stdout:
-        return json.loads(result.stdout)
-    return []
-#+end_src
-
-****** ansible-playbook --syntax-check → Subprocess Recommended
-Ansible's Python API exists but is *officially unsupported for external use*:
-#+begin_quote
-"This API is intended for internal Ansible use. Ansible may make changes to this API at any time that could break backward compatibility."
-— [[https://docs.ansible.com/projects/ansible-core/2.17/dev_guide/developing_api.html][Ansible Core Python API Docs]]
-#+end_quote
-
-*Thread safety warning:* "Because Ansible relies on forking processes, this API is not thread safe."
-
-Keep subprocess for syntax-check — more stable for a multi-threaded language server.
-
-****** ansible-doc → ansible-runner Library
-=ansible-runner= provides a stable Python interface for documentation:
-#+begin_src python
-import ansible_runner
-import json
-
-def get_module_docs(module_name: str) -> dict:
-    """Get module documentation via ansible-runner."""
-    output, errors = ansible_runner.get_plugin_docs(
-        plugin_names=[module_name],
-        plugin_type='module',
-        response_format='json'
-    )
-    return json.loads(output) if output else {}
-
-def list_modules() -> list:
-    """List available modules."""
-    output, errors = ansible_runner.get_plugin_list(
-        list_files=False,
-        response_format='json'
-    )
-    return json.loads(output) if output else []
-#+end_src
-
-****** Summary: What to Use
-| Command              | Approach                | Rationale                        |
-|----------------------+-------------------------+----------------------------------|
-| Version detection    | =importlib.metadata=      | No subprocess, fast, reliable    |
-| ansible-lint         | subprocess + JSON parse | Only stable interface            |
-| Syntax check         | subprocess              | Thread-safe, stable              |
-| Module docs          | =ansible-runner=          | Stable Python API                |
-| Container management | =podman-py=               | Type-safe, async support         |
-
-**** TODO Python Project Structure
+**** Python Project Structure
 :PROPERTIES:
 :ID:       e70a1915-93e5-4168-bdbc-acee0e38ed54
 :END:
@@ -2799,16 +2744,6 @@ rm -rf .venv uv.lock && uv sync && uv pip install -e .
 
 Hatchling recommended for language servers — production-ready, minimal config.
 
-**** Risk Assessment (Updated)
-
-| Area                    | Risk   | Mitigation                                        |
-|-------------------------+--------+---------------------------------------------------|
-| YAML position tracking  | Medium | tree-sitter-yaml with native position API         |
-| Container management    | Low    | podman-py typed API with structured errors        |
-| Completion context      | Medium | Port tests first, validate behavior               |
-| Async patterns          | Low    | pygls handles async well, use pytest-asyncio      |
-| Module documentation    | Low    | ansible-runner provides stable Python API         |
-| External commands       | Low    | importlib.metadata for version; subprocess stable |
 
 **** DONE Pytest Infrastructure
 CLOSED: [2026-01-28 Tue]
