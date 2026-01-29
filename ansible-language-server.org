@@ -204,11 +204,89 @@ class TestCompletionProvider:
 
 **** Porting Tiers
 
-***** Tier 1: Foundation (Port First)
-- =interfaces/module.ts= - Data structures
-- =interfaces/extensionSettings.ts= - Settings
-- =utils/ansible.ts= - Keyword definitions (722 lines of dicts)
-- =test/helper.ts= - Test infrastructure
+***** DONE Tier 1: Foundation (Port First)
+CLOSED: [2026-01-28 Tue]
+:PROPERTIES:
+:ID:       f1a2b3c4-d5e6-7890-abcd-ef1234567891
+:END:
+- [X] =interfaces/module.ts= - Data structures → =src/ansible_ls/models/module.py=
+- [ ] =interfaces/extensionSettings.ts= - Settings (TODO)
+- [X] =utils/ansible.ts= - Keyword definitions → =src/ansible_ls/utils/ansible_keywords.py=
+- [X] =test/helper.ts= - Test infrastructure → =tests/conftest.py=
+
+****** DONE Ansible Keywords Port
+CLOSED: [2026-01-28 Tue]
+:PROPERTIES:
+:ID:       a1b2c3d4-e5f6-7890-1234-567890abcdef
+:END:
+
+Ported =src/utils/ansible.ts= (722 lines) to =src/ansible_ls/utils/ansible_keywords.py=.
+
+******* Design Decisions
+
+| TypeScript                  | Python                        | Rationale                      |
+|-----------------------------+-------------------------------+--------------------------------|
+| =Map<string, string \vert MarkupContent>= | =dict[str, KeywordDoc]=         | Simpler, same semantics        |
+| =MarkupKind= from LSP       | Custom =MarkupKind= enum        | Avoid LSP dependency for data  |
+| Computed at runtime         | Computed at module load       | Immutable after import         |
+
+******* Keyword Categories
+
+| Dictionary                    | Count | Purpose                              |
+|-------------------------------+-------+--------------------------------------|
+| =PLAY_KEYWORDS=                 |    43 | Valid at play level                  |
+| =ROLE_KEYWORDS=                 |    26 | Valid in role definitions            |
+| =BLOCK_KEYWORDS=                |    30 | Valid in block/rescue/always         |
+| =TASK_KEYWORDS=                 |    42 | Valid in tasks                       |
+| =PLAY_EXCLUSIVE_KEYWORDS=       |    17 | Only valid in plays (derived)        |
+| =PLAY_WITHOUT_TASK_KEYWORDS=    |    20 | Play keywords minus task (derived)   |
+
+******* Helper Functions
+
+#+begin_src python
+def is_task_keyword(value: str) -> bool:
+    """Check if value is a task keyword or starts with 'with_'."""
+    return value in TASK_KEYWORDS or value.startswith("with_")
+
+def get_keyword_documentation(keyword: str, context: str) -> KeywordDoc | None:
+    """Get documentation for keyword in context ('play', 'role', 'block', 'task')."""
+    ...
+#+end_src
+
+******* Test Coverage
+
+#+begin_src shell :results raw :wrap example
+uv run pytest tests/utils/test_ansible_keywords.py -v --tb=no | tail -30
+#+end_src
+
+#+RESULTS:
+#+begin_example
+tests/utils/test_ansible_keywords.py::TestKeywordMaps::test_play_keywords_not_empty PASSED
+tests/utils/test_ansible_keywords.py::TestKeywordMaps::test_task_keywords_not_empty PASSED
+tests/utils/test_ansible_keywords.py::TestKeywordMaps::test_block_keywords_not_empty PASSED
+tests/utils/test_ansible_keywords.py::TestKeywordMaps::test_role_keywords_not_empty PASSED
+tests/utils/test_ansible_keywords.py::TestKeywordMaps::test_common_keywords_present PASSED
+tests/utils/test_ansible_keywords.py::TestKeywordMaps::test_play_exclusive_keywords PASSED
+tests/utils/test_ansible_keywords.py::TestKeywordMaps::test_task_specific_keywords PASSED
+tests/utils/test_ansible_keywords.py::TestKeywordMaps::test_block_specific_keywords PASSED
+tests/utils/test_ansible_keywords.py::TestMarkupContent::test_some_keywords_have_markup PASSED
+tests/utils/test_ansible_keywords.py::TestMarkupContent::test_plain_string_documentation PASSED
+tests/utils/test_ansible_keywords.py::TestMarkupContent::test_markup_content_frozen PASSED
+tests/utils/test_ansible_keywords.py::TestIsTaskKeyword::test_known_task_keyword PASSED
+tests/utils/test_ansible_keywords.py::TestIsTaskKeyword::test_with_prefix_keywords PASSED
+tests/utils/test_ansible_keywords.py::TestIsTaskKeyword::test_unknown_keyword PASSED
+tests/utils/test_ansible_keywords.py::TestIsTaskKeyword::test_play_only_keyword PASSED
+tests/utils/test_ansible_keywords.py::TestHelperFunctions::test_is_play_keyword PASSED
+tests/utils/test_ansible_keywords.py::TestHelperFunctions::test_is_block_keyword PASSED
+tests/utils/test_ansible_keywords.py::TestHelperFunctions::test_is_role_keyword PASSED
+tests/utils/test_ansible_keywords.py::TestHelperFunctions::test_get_keyword_documentation PASSED
+tests/utils/test_ansible_keywords.py::TestHelperFunctions::test_get_keyword_text_string PASSED
+tests/utils/test_ansible_keywords.py::TestHelperFunctions::test_get_keyword_text_markup PASSED
+tests/utils/test_ansible_keywords.py::TestPlayWithoutTaskKeywords::test_excludes_task_keywords PASSED
+tests/utils/test_ansible_keywords.py::TestPlayWithoutTaskKeywords::test_includes_play_exclusive PASSED
+
+23 passed
+#+end_example
 
 ***** DONE Tier 2: Core Utilities
 CLOSED: [2026-01-28 Tue]
@@ -1601,9 +1679,9 @@ Research phase complete. Ready to proceed with implementation.
 4. [X] Research Ansible Python APIs (see External Command Integration)
 5. [X] Fix pyproject.toml build-system for entry points
 6. [X] Set up pytest infrastructure with fixtures from =test/helper.ts=
-7. [ ] Port =utils/ansible.ts= keyword definitions (low risk, high value)
+7. [X] Port =utils/ansible.ts= keyword definitions (see [[*Ansible Keywords Port][Ansible Keywords Port]])
 8. [X] Port =interfaces/module.ts= to dataclasses (see =src/ansible_ls/models/module.py=)
-9. [X] Port =utils/yaml.ts= using tree-sitter-yaml with comprehensive tests (see AncestryBuilder Wrapper Node Fix)
+9. [X] Port =utils/yaml.ts= using tree-sitter-yaml with comprehensive tests (see [[*AncestryBuilder Wrapper Node Fix][AncestryBuilder Wrapper Node Fix]])
 10. [ ] Incrementally port services and providers
 
 ***** Running Tests
@@ -1620,18 +1698,11 @@ cachedir: .pytest_cache
 rootdir: /home/chad/code/ansible-language-server
 configfile: pyproject.toml
 plugins: asyncio-1.3.0
-collected 9 items
+collected 32 items
 
-tests/utils/test_yaml_utils.py::TestAncestryBuilder::test_can_get_parent PASSED [ 11%]
-tests/utils/test_yaml_utils.py::TestAncestryBuilder::test_can_get_asserted_parent PASSED [ 22%]
-tests/utils/test_yaml_utils.py::TestAncestryBuilder::test_can_assert_parent_fails PASSED [ 33%]
-tests/utils/test_yaml_utils.py::TestAncestryBuilder::test_can_get_ancestor PASSED [ 44%]
-tests/utils/test_yaml_utils.py::TestAncestryBuilder::test_can_get_parent_path PASSED [ 55%]
-tests/utils/test_yaml_utils.py::TestAncestryBuilder::test_can_get_key PASSED [ 66%]
-tests/utils/test_yaml_utils.py::TestYamlParsing::test_parse_simple_yaml PASSED [ 77%]
-tests/utils/test_yaml_utils.py::TestYamlParsing::test_parse_playbook PASSED [ 88%]
-tests/utils/test_yaml_utils.py::TestYamlParsing::test_get_node_at_position PASSED [100%]
+tests/utils/test_ansible_keywords.py: 23 passed
+tests/utils/test_yaml_utils.py: 9 passed
 
-============================== 9 passed in 0.05s ===============================
+============================== 32 passed in 0.08s ==============================
 #+end_example
 
