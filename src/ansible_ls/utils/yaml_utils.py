@@ -73,7 +73,33 @@ class AncestryBuilder:
     Navigate YAML AST ancestry.
 
     Port of TypeScript AncestryBuilder class.
+
+    tree-sitter-yaml produces wrapper nodes that don't exist in the npm yaml
+    package's AST. This class skips these intermediate nodes to navigate to
+    semantically meaningful parents.
+
+    Wrapper nodes (skipped automatically):
+        - flow_node, block_node: Container wrappers
+        - plain_scalar, string_scalar: Scalar value wrappers
+        - double_quote_scalar, single_quote_scalar: Quoted string wrappers
+
+    Semantic nodes (navigation targets):
+        - block_mapping: YAML mapping/dict
+        - block_sequence: YAML list
+        - block_mapping_pair: Key-value pair (skipped unless explicitly expected)
+        - block_sequence_item: List item
+        - document, stream: Document structure
     """
+
+    # Node types that are wrappers and should be skipped during navigation
+    WRAPPER_TYPES = frozenset({
+        "flow_node",
+        "block_node",
+        "plain_scalar",
+        "string_scalar",
+        "double_quote_scalar",
+        "single_quote_scalar",
+    })
 
     def __init__(self, path: Optional[list] = None, index: Optional[int] = None):
         self._path = path or []
@@ -81,7 +107,7 @@ class AncestryBuilder:
 
     def parent(self, expected_type: Optional[str] = None) -> "AncestryBuilder":
         """
-        Move up to parent node.
+        Move up to parent node, skipping wrapper nodes.
 
         Args:
             expected_type: If provided, assert the parent has this node type.
@@ -89,11 +115,28 @@ class AncestryBuilder:
         """
         self._index -= 1
 
+        # Skip wrapper nodes to reach semantically meaningful parent
+        while self._index >= 0:
+            current = self.get()
+            if current is None:
+                break
+            if current.type not in self.WRAPPER_TYPES:
+                break
+            self._index -= 1
+
         current = self.get()
-        # Skip block_mapping_pair nodes unless explicitly expected
-        if current and current.type == "block_mapping_pair":
-            if expected_type != "block_mapping_pair":
+        # Skip structural wrapper nodes unless explicitly expected
+        # - block_mapping_pair: wraps key-value pairs in mappings
+        # - block_sequence_item: wraps items in sequences
+        if current and current.type in ("block_mapping_pair", "block_sequence_item"):
+            if expected_type != current.type:
                 self._index -= 1
+                # Also skip any wrapper nodes above the structural wrapper
+                while self._index >= 0:
+                    current = self.get()
+                    if current is None or current.type not in self.WRAPPER_TYPES:
+                        break
+                    self._index -= 1
 
         # Type assertion
         if expected_type:
@@ -120,25 +163,31 @@ class AncestryBuilder:
 
     def get(self):
         """Get current node, or None if invalid."""
-        if 0 <= self._index < len(self._path):
-            return self._path[int(self._index)]
+        if isinstance(self._index, int) and 0 <= self._index < len(self._path):
+            return self._path[self._index]
         return None
 
     def get_path(self) -> Optional[list]:
         """Get path up to current node."""
-        if self._index < 0:
+        if not isinstance(self._index, int) or self._index < 0:
             return None
-        return self._path[: int(self._index) + 1]
+        return self._path[: self._index + 1]
 
     def get_string_key(self) -> Optional[str]:
         """Get the key string of the next pair in path."""
+        # Guard against invalid index (e.g., float('-inf') from failed assertion)
+        if not isinstance(self._index, int) or self._index < 0:
+            return None
         if self._index + 1 >= len(self._path):
             return None
 
-        node = self._path[int(self._index) + 1]
+        node = self._path[self._index + 1]
         if node.type == "block_mapping_pair" and node.children:
             key_node = node.children[0]
-            if key_node.type in ("flow_scalar", "plain_scalar"):
+            # Handle wrapper nodes around the key
+            while key_node.type in self.WRAPPER_TYPES and key_node.children:
+                key_node = key_node.children[0]
+            if key_node.type in ("flow_scalar", "plain_scalar", "string_scalar"):
                 text = key_node.text.decode("utf-8")
                 return text.strip("\"'")
         return None
