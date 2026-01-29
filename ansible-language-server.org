@@ -112,12 +112,12 @@ You excel at creating clear, executable port plans that teams can follow with co
 I remember having a nice looking summary output regarding the diffs. But it seems to have not written out to Org.
 So let's have Claude follow the literate programming paradigm and add an Org subtree to this file.
 
-** Codebase Analysis
+*** Codebase Analysis
 :PROPERTIES:
 :CREATED:  [2026-01-28 Tue]
 :END:
 
-*** Architecture Overview
+**** Architecture Overview
 
 The ansible-language-server is a TypeScript implementation of the Language Server Protocol for Ansible playbooks. Total: ~7,126 lines across 34 files.
 
@@ -137,7 +137,7 @@ ansible-language-server/
 └── bin/ansible-language-server           # CLI entry
 #+end_src
 
-*** Key Modules by Complexity
+**** Key Modules by Complexity
 
 | Module                   | Lines | Complexity | Port Priority |
 |--------------------------+-------+------------+---------------|
@@ -148,7 +148,7 @@ ansible-language-server/
 | =ansibleLanguageService.ts= |   365 | Medium     | Tier 6        |
 | =docsLibrary.ts=           |   275 | Medium     | Tier 3        |
 
-*** Dependency Mapping
+**** Dependency Mapping
 
 | TypeScript               | Python Equivalent       | Notes                         |
 |--------------------------+-------------------------+-------------------------------|
@@ -160,9 +160,9 @@ ansible-language-server/
 | =ini=                      | =configparser=            | Standard library              |
 | =@flatten-js/interval-tree= | =sortedcontainers=        | Interval tree implementation  |
 
-*** Core Services
+**** Core Services
 
-**** AnsibleLanguageService
+***** AnsibleLanguageService
 The main LSP orchestrator. Initializes connection, registers handlers, routes requests.
 
 #+begin_src typescript
@@ -196,16 +196,16 @@ async def completion(params: types.CompletionParams) -> types.CompletionList:
     pass
 #+end_src
 
-**** WorkspaceManager
+***** WorkspaceManager
 Manages multi-folder workspace contexts. Each folder gets its own =WorkspaceFolderContext= with services.
 
-**** DocsLibrary
+***** DocsLibrary
 Caches Ansible module documentation. Discovers modules, parses YAML docs, handles FQCN lookups.
 
-**** ExecutionEnvironment
+***** ExecutionEnvironment
 Most complex service. Manages Podman/Docker containers for isolated Ansible execution.
 
-*** LSP Features Implemented
+**** LSP Features Implemented
 
 - =textDocumentSync=: Incremental updates
 - =semanticTokensProvider=: Syntax highlighting
@@ -213,9 +213,9 @@ Most complex service. Manages Podman/Docker containers for isolated Ansible exec
 - =completionProvider=: Auto-completion with resolve
 - =definitionProvider=: Go-to-definition
 
-*** Data Structures
+**** Data Structures
 
-**** IModuleMetadata
+***** IModuleMetadata
 #+begin_src typescript
 interface IModuleMetadata {
   source: string;
@@ -242,7 +242,7 @@ class ModuleMetadata:
     documentation: Optional["ModuleDocumentation"] = None
 #+end_src
 
-**** IOption (module parameter)
+***** IOption (module parameter)
 #+begin_src python
 @dataclass
 class Option:
@@ -256,7 +256,7 @@ class Option:
     suboptions: dict[str, "Option"] = field(default_factory=dict)
 #+end_src
 
-*** Test Structure
+**** Test Structure
 
 Current: Mocha + Chai with ts-node
 
@@ -267,7 +267,7 @@ Current: Mocha + Chai with ts-node
 | =validationProvider.test.ts=    | Multiple validation paths     |
 | =hoverProvider.test.ts=         | Documentation retrieval       |
 
-**** Test Mapping to pytest
+***** Test Mapping to pytest
 
 | Mocha               | pytest                           |
 |---------------------+----------------------------------|
@@ -298,41 +298,52 @@ class TestCompletionProvider:
         assert len(result.items) > 0
 #+end_src
 
-*** Porting Tiers
+**** Porting Tiers
 
-**** Tier 1: Foundation (Port First)
+***** Tier 1: Foundation (Port First)
 - =interfaces/module.ts= - Data structures
 - =interfaces/extensionSettings.ts= - Settings
 - =utils/ansible.ts= - Keyword definitions (722 lines of dicts)
 - =test/helper.ts= - Test infrastructure
 
-**** Tier 2: Core Utilities
+***** TODO Tier 2: Core Utilities
+:PROPERTIES:
+:ID:       187f1b86-7e65-420d-ae76-a42dfeed799b
+:END:
+- Note taken on [2026-01-28 Wed 17:54] \\
+  Would [[https://tree-sitter.github.io/tree-sitter/][tree-sitter]] be a good fit for YAML AST navigation? Maybe with the [[https://github.com/ikatyang/tree-sitter-yaml][tree-sitter-yaml]] grammar and [[https://github.com/neomutt/lsp-tree-sitter][lsp-tree-sitter]]?
+
 - =utils/yaml.ts= - YAML AST navigation (critical, complex)
 - =utils/docsParser.ts= - Documentation parsing
 - =utils/commandRunner.ts= - External command execution
 
-**** Tier 3: Services
+***** Tier 3: Services
 - =services/settingsManager.ts=
 - =services/workspaceManager.ts=
 - =services/docsLibrary.ts=
 - =services/ansibleLint.ts=
 - =services/validationManager.ts=
 
-**** Tier 4: Complex Services
+***** TODO Tier 4: Complex Services
+:PROPERTIES:
+:ID:       b3c8a3b7-2dff-4ebe-abcb-038942d7b008
+:END:
+- Note taken on [2026-01-28 Wed 17:53] \\
+  Is there a Python library that talks to Podman for this?
 - =services/executionEnvironment.ts= - Container management (536 lines)
 
-**** Tier 5: Providers
+***** Tier 5: Providers
 - =providers/validationProvider.ts=
 - =providers/completionProvider.ts= (most complex at 666 lines)
 - =providers/hoverProvider.ts=
 - =providers/definitionProvider.ts=
 - =providers/semanticTokenProvider.ts=
 
-**** Tier 6: LSP Core
+***** Tier 6: LSP Core
 - =ansibleLanguageService.ts=
 - =server.ts=
 
-*** YAML AST Navigation
+**** YAML AST Navigation
 
 The =yaml.ts= module is critical. It navigates the YAML AST to determine cursor context (play vs task vs block level).
 
@@ -358,8 +369,13 @@ def get_path_at(doc: CommentedMap, offset: int) -> list:
     pass
 #+end_src
 
-*** External Command Integration
+**** TODO External Command Integration
+:PROPERTIES:
+:ID:       c44785a8-6794-445f-80f4-ebc6e617eb5c
+:END:
 
+- Note taken on [2026-01-28 Wed 18:01] \\
+  Do all of these have API or python library options? It would be nice to trim the process management and hit libraris.
 The server spawns external processes:
 
 | Command                          | Purpose                 |
@@ -369,7 +385,7 @@ The server spawns external processes:
 | =ansible-playbook --syntax-check=  | Fallback validation     |
 | =podman/docker run=                | Containerized execution |
 
-*** Python Project Structure
+**** Python Project Structure
 
 #+begin_src
 ansible-language-server-py/
@@ -410,9 +426,35 @@ ansible-language-server-py/
     └── utils/
 #+end_src
 
-*** pyproject.toml Skeleton
+**** TODO pyproject.toml Skeleton
+:PROPERTIES:
+:ID:       65ba55a4-8fa8-4639-8e6a-6dbe276f8cf3
+:END:
 
-#+begin_src toml
+- Note taken on [2026-01-28 Wed 18:08] \\
+  Address this warning
+  #+begin_src shell :results output :wrap example
+  uv sync
+
+  #+end_src
+
+  #+RESULTS:
+  #+begin_example
+  warning: Skipping installation of entry points (`project.scripts`) because this project is not packaged; to install entry points, set `tool.uv.package = true` or define a `build-system`
+Using CPython 3.14.2
+Creating virtual environment at: .venv
+Resolved 22 packages in 8.12s
+Prepared 4 packages in 1.17s
+Installed 6 packages in 6ms
+ + attrs==25.4.0
+ + cattrs==25.3.0
+ + lsprotocol==2025.0.0
+ + pygls==2.0.1
+ + ruamel-yaml==0.19.1
+ + typing-extensions==4.15.0
+  #+end_example
+
+#+begin_src toml :tangle pyproject.toml
 [project]
 name = "ansible-language-server"
 version = "0.1.0"
@@ -449,7 +491,7 @@ python_version = "3.10"
 strict = true
 #+end_src
 
-*** Risk Assessment
+**** Risk Assessment
 
 | Area                    | Risk   | Mitigation                                |
 |-------------------------+--------+-------------------------------------------|
@@ -459,9 +501,12 @@ strict = true
 | Async patterns          | Medium | pygls handles async well, use pytest-asyncio |
 | Module documentation    | Low    | antsibull-docs is Python-native           |
 
-*** Next Steps
-
-1. [ ] Initialize Python project with =uv init=
+**** TODO Next Steps
+:PROPERTIES:
+:ID:       042d8753-3757-48a6-b5a0-251196171795
+:END:
+perform the next step
+1. [X] Initialize Python project with =uv init=
 2. [ ] Set up pytest infrastructure with fixtures from =test/helper.ts=
 3. [ ] Port =utils/ansible.ts= keyword definitions (low risk, high value)
 4. [ ] Port =interfaces/module.ts= to dataclasses

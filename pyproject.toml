@@ -1,7 +1,34 @@
 [project]
 name = "ansible-language-server"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
-requires-python = ">=3.14"
-dependencies = []
+description = "Language Server Protocol implementation for Ansible"
+requires-python = ">=3.10"
+dependencies = [
+    "pygls>=1.3.0",
+    "lsprotocol>=2023.0.0",
+    "ruamel.yaml>=0.18.0",
+    "attrs>=23.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.3.0",
+    "mypy>=1.8.0",
+]
+
+[project.scripts]
+ansible-language-server = "ansible_ls.server:main"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
