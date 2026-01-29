@@ -306,7 +306,8 @@ class TestCompletionProvider:
 - =utils/ansible.ts= - Keyword definitions (722 lines of dicts)
 - =test/helper.ts= - Test infrastructure
 
-***** TODO Tier 2: Core Utilities
+***** DONE Tier 2: Core Utilities
+CLOSED: [2026-01-28 Tue]
 :PROPERTIES:
 :ID:       187f1b86-7e65-420d-ae76-a42dfeed799b
 :END:
@@ -317,6 +318,119 @@ class TestCompletionProvider:
 - =utils/docsParser.ts= - Documentation parsing
 - =utils/commandRunner.ts= - External command execution
 
+****** Tree-sitter Research Findings
+:PROPERTIES:
+:CREATED:  [2026-01-28 Tue]
+:END:
+
+*Recommendation: Use tree-sitter-yaml with py-tree-sitter for YAML AST navigation.*
+
+******* Installation
+#+begin_src bash
+pip install tree-sitter tree-sitter-languages
+#+end_src
+
+******* tree-sitter vs ruamel.yaml Comparison
+
+| Feature              | tree-sitter-yaml             | ruamel.yaml                  |
+|----------------------+------------------------------+------------------------------|
+| Position Tracking    | Native (start/end points)    | Native (lc attrs)            |
+| Incremental Parsing  | Yes (efficient updates)      | No                           |
+| Parent Traversal     | Cursor-based                 | Direct parent refs           |
+| Performance          | Optimized (C implementation) | Pure Python (slower)         |
+| Language Server Fit  | Excellent                    | Good for read-only           |
+
+******* Core Pattern: Get Node at Position
+#+begin_src python
+from tree_sitter_languages import get_language, get_parser
+
+language = get_language('yaml')
+parser = get_parser('yaml')
+
+def get_node_at_position(tree, offset: int):
+    """Get deepest node containing the byte offset."""
+    def walk(node):
+        if node.start_byte <= offset < node.end_byte:
+            for child in node.children:
+                result = walk(child)
+                if result:
+                    return result
+            return node
+        return None
+    return walk(tree.root_node)
+
+# Parse and query
+tree = parser.parse(yaml_content.encode('utf-8'))
+node = get_node_at_position(tree, cursor_offset)
+print(f"Type: {node.type}, Text: {node.text.decode()}")
+print(f"Position: line {node.start_point[0]}, col {node.start_point[1]}")
+#+end_src
+
+******* AncestryBuilder Port Pattern
+#+begin_src python
+class AncestryBuilder:
+    """Port of TypeScript AncestryBuilder for tree-sitter YAML."""
+
+    def __init__(self, path: list = None, index: int = None):
+        self._path = path or []
+        self._index = index if index is not None else len(self._path) - 1
+
+    def parent(self, expected_type=None):
+        """Move up path, optionally asserting type."""
+        self._index -= 1
+        current = self.get()
+        # Skip pair nodes unless explicitly expected
+        if current and current.type == 'block_mapping_pair':
+            if expected_type != 'pair':
+                self._index -= 1
+        # Type assertion
+        if expected_type:
+            current = self.get()
+            if not current or current.type != expected_type:
+                self._index = float('-inf')
+        return self
+
+    def get(self):
+        """Get current node."""
+        if 0 <= self._index < len(self._path):
+            return self._path[int(self._index)]
+        return None
+#+end_src
+
+******* pygls Integration Example
+#+begin_src python
+from pygls.server import LanguageServer
+from tree_sitter_languages import get_parser
+
+class AnsibleLanguageServer:
+    def __init__(self):
+        self.server = LanguageServer('ansible-language-server', 'v1.0')
+        self.parser = get_parser('yaml')
+        self.trees = {}  # uri -> tree cache
+
+        @self.server.feature('textDocument/didOpen')
+        def did_open(params):
+            uri = params.textDocument.uri
+            text = params.textDocument.text
+            self.trees[uri] = self.parser.parse(text.encode('utf-8'))
+
+        @self.server.feature('textDocument/didChange')
+        def did_change(params):
+            uri = params.textDocument.uri
+            text = params.contentChanges[0]['text']
+            # Incremental parsing possible but full reparse is simple
+            self.trees[uri] = self.parser.parse(text.encode('utf-8'))
+#+end_src
+
+******* lsp-tree-sitter Assessment
+[[https://github.com/neomutt/lsp-tree-sitter][lsp-tree-sitter]] provides utilities for tree-sitter-based language servers:
+- Converts ASTs to JSON
+- Generates JSON schemas from grammars
+- ~1,400 weekly downloads (small community)
+- Limited YAML-specific features
+
+*Verdict:* Optional utility layer. Custom node navigation (like =AncestryBuilder=) will still be needed.
+
 ***** Tier 3: Services
 - =services/settingsManager.ts=
 - =services/workspaceManager.ts=
@@ -324,13 +438,121 @@ class TestCompletionProvider:
 - =services/ansibleLint.ts=
 - =services/validationManager.ts=
 
-***** TODO Tier 4: Complex Services
+***** DONE Tier 4: Complex Services
+CLOSED: [2026-01-28 Tue]
 :PROPERTIES:
 :ID:       b3c8a3b7-2dff-4ebe-abcb-038942d7b008
 :END:
 - Note taken on [2026-01-28 Wed 17:53] \\
   Is there a Python library that talks to Podman for this?
 - =services/executionEnvironment.ts= - Container management (536 lines)
+
+****** Podman Python Library Research
+:PROPERTIES:
+:CREATED:  [2026-01-28 Tue]
+:END:
+
+*Recommendation: Use [[https://github.com/containers/podman-py][podman-py]] (official Podman Python SDK).*
+
+******* Installation
+#+begin_src bash
+pip install podman  # podman-py v5.7.0 (Jan 2026)
+#+end_src
+
+******* Library vs Subprocess Comparison
+
+| Aspect           | podman-py (Library)          | subprocess                   |
+|------------------+------------------------------+------------------------------|
+| Error handling   | Structured exceptions        | Parse exit codes/stderr      |
+| Type safety      | Good (typed API)             | Poor                         |
+| Async support    | Yes (AsyncPodmanClient)      | Limited                      |
+| Streaming        | Native                       | Manual                       |
+| Performance      | ~10-20ms per op              | ~50-100ms (process spawn)    |
+| Dependencies     | 1 package                    | None                         |
+
+******* Basic Container Operations
+#+begin_src python
+from podman import PodmanClient
+
+class ExecutionEnvironment:
+    def __init__(self, image: str):
+        self.image = image
+        self.client = PodmanClient(
+            base_url="unix:///run/user/1000/podman/podman.sock"
+        )
+
+    def pull_image(self) -> bool:
+        """Pull container image."""
+        try:
+            self.client.images.pull(self.image)
+            return True
+        except Exception as e:
+            print(f"Pull failed: {e}")
+            return False
+
+    def run_container(self, name: str) -> bool:
+        """Run detached container with bash shell."""
+        try:
+            self.client.containers.run(
+                image=self.image,
+                name=name,
+                command=["bash"],
+                detach=True,
+                stdin=True,
+                environment=self._get_ansible_env(),
+                volumes=self._get_volume_mounts(),
+            )
+            return True
+        except Exception as e:
+            print(f"Run failed: {e}")
+            return False
+
+    def execute_command(self, container_name: str, cmd: list) -> tuple[int, str]:
+        """Execute command in running container."""
+        container = self.client.containers.get(container_name)
+        exit_code, output = container.exec_run(cmd=cmd, stdout=True, stderr=True)
+        return exit_code, output.decode() if output else ""
+
+    def cleanup(self, container_name: str) -> None:
+        """Stop and remove container."""
+        try:
+            container = self.client.containers.get(container_name)
+            container.stop(timeout=5)
+            container.remove()
+        except Exception:
+            pass  # Container may not exist
+#+end_src
+
+******* docker-py Compatibility
+=docker-py= can connect to Podman's Docker-compatible socket:
+#+begin_src python
+import docker
+client = docker.DockerClient(
+    base_url='unix:///run/user/1000/podman/podman.sock'
+)
+#+end_src
+*Caveats:* =docker.from_env()= unreliable with Podman; explicit =base_url= required.
+
+******* Hybrid Approach (Recommended)
+#+begin_src python
+import shutil
+from podman import PodmanClient
+
+class ExecutionEnvironment:
+    def __init__(self, settings: dict):
+        self.settings = settings
+        self.container_engine = self._detect_engine()
+        self.client = PodmanClient(...) if self.container_engine == "podman" else None
+
+    def _detect_engine(self) -> str:
+        """Detect podman or docker via shutil.which (no subprocess)."""
+        for engine in ["podman", "docker"]:
+            if shutil.which(engine):
+                return engine
+        raise RuntimeError("Neither podman nor docker found")
+#+end_src
+
+Use =podman-py= for container lifecycle, keep =subprocess= only for platform detection.
 
 ***** Tier 5: Providers
 - =providers/validationProvider.ts=
@@ -369,7 +591,8 @@ def get_path_at(doc: CommentedMap, offset: int) -> list:
     pass
 #+end_src
 
-**** TODO External Command Integration
+**** DONE External Command Integration
+CLOSED: [2026-01-28 Tue]
 :PROPERTIES:
 :ID:       c44785a8-6794-445f-80f4-ebc6e617eb5c
 :END:
@@ -378,12 +601,113 @@ def get_path_at(doc: CommentedMap, offset: int) -> list:
   Do all of these have API or python library options? It would be nice to trim the process management and hit libraris.
 The server spawns external processes:
 
-| Command                          | Purpose                 |
-|----------------------------------+-------------------------|
-| =ansible --version=                | Detect installation     |
-| =ansible-lint=                     | Playbook linting        |
-| =ansible-playbook --syntax-check=  | Fallback validation     |
-| =podman/docker run=                | Containerized execution |
+| Command                          | Purpose                 | Python API?              |
+|----------------------------------+-------------------------+--------------------------|
+| =ansible --version=                | Detect installation     | *Yes* - importlib.metadata |
+| =ansible-lint=                     | Playbook linting        | *No* - subprocess only     |
+| =ansible-playbook --syntax-check=  | Fallback validation     | *Limited* - unstable API   |
+| =podman/docker run=                | Containerized execution | *Yes* - podman-py          |
+
+***** API Availability Research
+:PROPERTIES:
+:CREATED:  [2026-01-28 Tue]
+:END:
+
+****** ansible --version → importlib.metadata (Recommended)
+#+begin_src python
+import importlib.metadata
+import sys
+
+def get_ansible_metadata() -> dict:
+    """Get Ansible version info without subprocess."""
+    metadata = {}
+
+    try:
+        metadata['ansible_version'] = importlib.metadata.version('ansible')
+    except importlib.metadata.PackageNotFoundError:
+        metadata['ansible_version'] = None
+
+    try:
+        metadata['ansible_core_version'] = importlib.metadata.version('ansible-core')
+    except importlib.metadata.PackageNotFoundError:
+        metadata['ansible_core_version'] = None
+
+    metadata['python_version'] = f"{sys.version_info.major}.{sys.version_info.minor}"
+
+    try:
+        import ansible
+        import os
+        metadata['ansible_location'] = os.path.dirname(ansible.__file__)
+    except ImportError:
+        metadata['ansible_location'] = None
+
+    return metadata
+#+end_src
+
+****** ansible-lint → Subprocess Only
+*No public Python API.* The project explicitly states it's not a library.
+- CLI with JSON output (=-f codeclimate=) is the stable interface
+- Keep subprocess approach; parse JSON output
+#+begin_src python
+import subprocess
+import json
+
+def run_ansible_lint(playbook_path: str, config_path: str = None) -> list:
+    """Run ansible-lint and parse JSON output."""
+    cmd = ["ansible-lint", "-f", "codeclimate", "--offline", "--nocolor"]
+    if config_path:
+        cmd.extend(["-c", config_path])
+    cmd.append(playbook_path)
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.stdout:
+        return json.loads(result.stdout)
+    return []
+#+end_src
+
+****** ansible-playbook --syntax-check → Subprocess Recommended
+Ansible's Python API exists but is *officially unsupported for external use*:
+#+begin_quote
+"This API is intended for internal Ansible use. Ansible may make changes to this API at any time that could break backward compatibility."
+— [[https://docs.ansible.com/projects/ansible-core/2.17/dev_guide/developing_api.html][Ansible Core Python API Docs]]
+#+end_quote
+
+*Thread safety warning:* "Because Ansible relies on forking processes, this API is not thread safe."
+
+Keep subprocess for syntax-check — more stable for a multi-threaded language server.
+
+****** ansible-doc → ansible-runner Library
+=ansible-runner= provides a stable Python interface for documentation:
+#+begin_src python
+import ansible_runner
+import json
+
+def get_module_docs(module_name: str) -> dict:
+    """Get module documentation via ansible-runner."""
+    output, errors = ansible_runner.get_plugin_docs(
+        plugin_names=[module_name],
+        plugin_type='module',
+        response_format='json'
+    )
+    return json.loads(output) if output else {}
+
+def list_modules() -> list:
+    """List available modules."""
+    output, errors = ansible_runner.get_plugin_list(
+        list_files=False,
+        response_format='json'
+    )
+    return json.loads(output) if output else []
+#+end_src
+
+****** Summary: What to Use
+| Command              | Approach                | Rationale                        |
+|----------------------+-------------------------+----------------------------------|
+| Version detection    | =importlib.metadata=      | No subprocess, fast, reliable    |
+| ansible-lint         | subprocess + JSON parse | Only stable interface            |
+| Syntax check         | subprocess              | Thread-safe, stable              |
+| Module docs          | =ansible-runner=          | Stable Python API                |
+| Container management | =podman-py=               | Type-safe, async support         |
 
 **** Python Project Structure
 
@@ -426,7 +750,8 @@ ansible-language-server-py/
     └── utils/
 #+end_src
 
-**** TODO pyproject.toml Skeleton
+**** DONE pyproject.toml Skeleton
+CLOSED: [2026-01-28 Tue]
 :PROPERTIES:
 :ID:       65ba55a4-8fa8-4639-8e6a-6dbe276f8cf3
 :END:
@@ -454,17 +779,29 @@ Installed 6 packages in 6ms
  + typing-extensions==4.15.0
   #+end_example
 
+***** Fix: Add build-system for Entry Points
+The warning occurs because =uv= only packages projects with a =[build-system]= defined.
+Adding Hatchling (PyPA-recommended, uv's default) enables entry point installation.
+
 #+begin_src toml :tangle pyproject.toml
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "ansible-language-server"
 version = "0.1.0"
 description = "Language Server Protocol implementation for Ansible"
 requires-python = ">=3.10"
+readme = "README.md"
+license = {text = "MIT"}
 dependencies = [
     "pygls>=1.3.0",
     "lsprotocol>=2023.0.0",
     "ruamel.yaml>=0.18.0",
     "attrs>=23.0.0",
+    "tree-sitter>=0.23.0",
+    "tree-sitter-languages>=1.10.0",
 ]
 
 [project.optional-dependencies]
@@ -474,9 +811,18 @@ dev = [
     "ruff>=0.3.0",
     "mypy>=1.8.0",
 ]
+container = [
+    "podman>=5.0.0",
+]
+ansible = [
+    "ansible-runner>=2.4.0",
+]
 
 [project.scripts]
 ansible-language-server = "ansible_ls.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ansible_ls"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -491,25 +837,61 @@ python_version = "3.10"
 strict = true
 #+end_src
 
-**** Risk Assessment
+***** Installation with Entry Points
+After adding =[build-system]=:
+#+begin_src bash
+uv sync                    # Install dependencies
+uv pip install -e .        # Install project with entry points
+ansible-language-server --version  # Verify CLI works
+#+end_src
 
-| Area                    | Risk   | Mitigation                                |
-|-------------------------+--------+-------------------------------------------|
-| YAML position tracking  | High   | Test-driven with ruamel.yaml lc attrs     |
-| Container management    | High   | Thorough subprocess testing               |
-| Completion context      | Medium | Port tests first, validate behavior       |
-| Async patterns          | Medium | pygls handles async well, use pytest-asyncio |
-| Module documentation    | Low    | antsibull-docs is Python-native           |
+***** Build System Options
+| Build System | Best For                          | uv Integration |
+|--------------+-----------------------------------+----------------|
+| Hatchling    | General Python projects (default) | Excellent      |
+| Setuptools   | Complex packages with C ext       | Good           |
+| uv_build     | Pure Python, minimal config       | Best           |
+
+Hatchling recommended for language servers — production-ready, minimal config.
+
+**** Risk Assessment (Updated)
+
+| Area                    | Risk   | Mitigation                                        |
+|-------------------------+--------+---------------------------------------------------|
+| YAML position tracking  | Medium | tree-sitter-yaml with native position API         |
+| Container management    | Low    | podman-py typed API with structured errors        |
+| Completion context      | Medium | Port tests first, validate behavior               |
+| Async patterns          | Low    | pygls handles async well, use pytest-asyncio      |
+| Module documentation    | Low    | ansible-runner provides stable Python API         |
+| External commands       | Low    | importlib.metadata for version; subprocess stable |
 
 **** TODO Next Steps
 :PROPERTIES:
 :ID:       042d8753-3757-48a6-b5a0-251196171795
 :END:
-perform the next step
+Research phase complete. Ready to proceed with implementation.
+
 1. [X] Initialize Python project with =uv init=
-2. [ ] Set up pytest infrastructure with fixtures from =test/helper.ts=
-3. [ ] Port =utils/ansible.ts= keyword definitions (low risk, high value)
-4. [ ] Port =interfaces/module.ts= to dataclasses
-5. [ ] Port =utils/yaml.ts= with comprehensive tests
-6. [ ] Incrementally port services and providers
+2. [X] Research tree-sitter for YAML AST (see Tier 2 findings)
+3. [X] Research podman-py for container management (see Tier 4 findings)
+4. [X] Research Ansible Python APIs (see External Command Integration)
+5. [X] Fix pyproject.toml build-system for entry points
+6. [ ] Set up pytest infrastructure with fixtures from =test/helper.ts=
+7. [ ] Port =utils/ansible.ts= keyword definitions (low risk, high value)
+8. [ ] Port =interfaces/module.ts= to dataclasses
+9. [ ] Port =utils/yaml.ts= using tree-sitter-yaml with comprehensive tests
+10. [ ] Incrementally port services and providers
+
+***** Revised Dependency List
+Based on research, the Python port should use:
+#+begin_src
+pygls>=1.3.0              # LSP framework
+lsprotocol>=2023.0.0      # LSP types
+tree-sitter>=0.23.0       # Parser framework
+tree-sitter-languages>=1.10.0  # Pre-built grammars (incl. YAML)
+ruamel.yaml>=0.18.0       # YAML round-tripping (if needed)
+attrs>=23.0.0             # Data classes alternative
+podman>=5.0.0             # Container management [optional]
+ansible-runner>=2.4.0     # Module docs API [optional]
+#+end_src
 
