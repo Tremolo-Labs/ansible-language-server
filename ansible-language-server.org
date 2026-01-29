@@ -6,51 +6,39 @@
 
 *** Status Dashboard
 
-| Component              | Status  | Lines | Notes                                |
+| Component              | Status  | Lines | Documentation                        |
 |------------------------+---------+-------+--------------------------------------|
 | *Utils*                |         |       |                                      |
-| [[file:src/ansible_ls/utils/ansible_keywords.py][ansible_keywords.py]]    | ✅ DONE | ~670  | Static keyword definitions + docs    |
-| [[file:src/ansible_ls/utils/ansible_dynamic.py][ansible_dynamic.py]]     | ✅ DONE | ~260  | Dynamic keyword loading from Ansible |
-| [[file:src/ansible_ls/utils/yaml_utils.py][yaml_utils.py]]          | ✅ DONE | ~180  | tree-sitter YAML AST navigation      |
-| docsParser.py          | TODO    | ~200  | Port from TypeScript                 |
-| docsFinder.py          | TODO    | ~150  | Port from TypeScript                 |
-| commandRunner.py       | TODO    | ~100  | subprocess wrapper                   |
+| [[file:src/ansible_ls/utils/ansible_keywords.py][ansible_keywords.py]]    | ✅ DONE | ~670  | [[*Ansible Keywords][Ansible Keywords]]                     |
+| [[file:src/ansible_ls/utils/ansible_dynamic.py][ansible_dynamic.py]]     | ✅ DONE | ~260  | [[*Ansible Keywords][Ansible Keywords]]                     |
+| [[file:src/ansible_ls/utils/yaml_utils.py][yaml_utils.py]]          | ✅ DONE | ~180  | [[*YAML Parsing][YAML Parsing]]                         |
+| docsParser.py          | TODO    | ~200  | [[*Documentation Library][Documentation Library]]                 |
+| docsFinder.py          | TODO    | ~150  | [[*Documentation Library][Documentation Library]]                 |
+| commandRunner.py       | TODO    | ~100  | [[*External Tool Integration][External Tool Integration]]             |
 |------------------------+---------+-------+--------------------------------------|
 | *Models*               |         |       |                                      |
-| [[file:src/ansible_ls/models/module.py][module.py]]              | ✅ DONE | ~70   | ModuleMetadata, Option dataclasses   |
-| settings.py            | TODO    | ~100  | ExtensionSettings dataclass          |
+| [[file:src/ansible_ls/models/module.py][module.py]]              | ✅ DONE | ~70   | [[*Module Metadata][Module Metadata]]                      |
+| settings.py            | TODO    | ~100  | [[*Extension Settings][Extension Settings]]                   |
 |------------------------+---------+-------+--------------------------------------|
 | *Services*             |         |       |                                      |
-| settings_manager.py    | TODO    | ~150  | Settings management                  |
-| workspace_manager.py   | TODO    | ~240  | Multi-folder workspace contexts      |
-| docs_library.py        | TODO    | ~275  | Module documentation cache           |
-| validation_manager.py  | TODO    | ~180  | Validation orchestration             |
-| ansible_lint.py        | TODO    | ~200  | ansible-lint integration             |
-| execution_env.py       | TODO    | ~536  | Podman/Docker container support      |
+| settings_manager.py    | TODO    | ~150  | [[*Settings Service][Settings Service]]                     |
+| workspace_manager.py   | TODO    | ~240  | [[*Workspace Service][Workspace Service]]                    |
+| docs_library.py        | TODO    | ~275  | [[*Documentation Library][Documentation Library]]                 |
+| validation_manager.py  | TODO    | ~180  | [[*Validation Service][Validation Service]]                   |
+| ansible_lint.py        | TODO    | ~200  | [[*Validation Service][Validation Service]]                   |
+| execution_env.py       | TODO    | ~536  | [[*Container Management][Container Management]]                  |
 |------------------------+---------+-------+--------------------------------------|
 | *Providers*            |         |       |                                      |
-| hover.py               | TODO    | ~150  | Hover documentation                  |
-| definition.py          | TODO    | ~120  | Go-to-definition                     |
-| completion.py          | TODO    | ~666  | Auto-completion (most complex)       |
-| validation.py          | TODO    | ~180  | Diagnostic publishing                |
-| semantic_tokens.py     | TODO    | ~200  | Semantic highlighting                |
+| hover.py               | TODO    | ~150  | [[*Hover Provider][Hover Provider]]                       |
+| definition.py          | TODO    | ~120  | [[*Definition Provider][Definition Provider]]                  |
+| completion.py          | TODO    | ~666  | [[*Completion Provider][Completion Provider]]                  |
+| validation.py          | TODO    | ~180  | [[*Validation Service][Validation Service]]                   |
+| semantic_tokens.py     | TODO    | ~200  | (not yet documented)                 |
 |------------------------+---------+-------+--------------------------------------|
 | *Server*               |         |       |                                      |
-| [[file:src/ansible_ls/server.py][server.py]]              | ✅ DONE | ~15   | Minimal pygls entry point            |
+| [[file:src/ansible_ls/server.py][server.py]]              | ✅ DONE | ~15   | [[*Server Entry Point][Server Entry Point]]                   |
 
 *Tests:* 59 passing (27 dynamic keyword tests, 23 static keyword tests, 9 YAML utils tests)
-
-**** Implementation Checklist: Completion
-
-- [ ] Register completion provider with =@server.feature=
-- [ ] Implement context detection (play/task/block/role/module option)
-- [ ] Implement keyword completion for each context
-- [ ] Implement module name completion (FQCN + short names)
-- [ ] Implement module option completion with suboptions
-- [ ] Implement value completion (booleans, choices)
-- [ ] Handle trigger characters (=:=, =-=)
-- [ ] Implement completion resolve for lazy documentation
-- [ ] Write extensive tests with fixture playbooks
 
 *** TODO Progress
 :PROPERTIES:
@@ -58,15 +46,15 @@
 :END:
 
 **** Completed
-1. [X] Initialize Python project with =uv init=
-2. [X] Research [[*tree-sitter YAML Parsing][tree-sitter for YAML AST]]
-3. [X] Research [[*Container Management (podman-py)][podman-py for container management]]
-4. [X] Research [[*Ansible Internal APIs][Ansible Python APIs]]
-5. [X] Fix [[*pyproject.toml][pyproject.toml]] build-system for entry points
-6. [X] Set up [[*Test Infrastructure][pytest infrastructure]] with fixtures from =test/helper.ts=
-7. [X] Port [[*Ansible Keywords][utils/ansible.ts keyword definitions]]
-8. [X] Port [[*Module Metadata][interfaces/module.ts]] to dataclasses
-9. [X] Port [[*YAML AST Navigation][utils/yaml.ts]] using tree-sitter-yaml
+1. [X] Initialize Python project with =uv init= → [[*Project Configuration][Project Configuration]]
+2. [X] Research tree-sitter for YAML AST → [[*YAML Parsing][YAML Parsing]]
+3. [X] Research podman-py for container management → [[*Container Management][Container Management]]
+4. [X] Research Ansible Python APIs → [[*Ansible Keywords][Ansible Keywords]]
+5. [X] Fix pyproject.toml build-system → [[*Project Configuration][Project Configuration]]
+6. [X] Set up pytest infrastructure → [[*Test Infrastructure][Test Infrastructure]]
+7. [X] Port utils/ansible.ts keyword definitions → [[*Ansible Keywords][Ansible Keywords]]
+8. [X] Port interfaces/module.ts to dataclasses → [[*Module Metadata][Module Metadata]]
+9. [X] Port utils/yaml.ts using tree-sitter-yaml → [[*YAML Parsing][YAML Parsing]]
 
 **** In Progress
 10. [ ] Tangle and implement services (=C-c C-v t= in Emacs)
@@ -80,8 +68,18 @@
     - [ ] [[*Definition Provider][DefinitionProvider]] - go-to-definition for roles/includes
     - [ ] [[*Completion Provider][CompletionProvider]] - context-aware completions
 
+**** Completion Provider Checklist
+- [ ] Register completion provider with =@server.feature=
+- [ ] Implement context detection (play/task/block/role/module option)
+- [ ] Implement keyword completion for each context
+- [ ] Implement module name completion (FQCN + short names)
+- [ ] Implement module option completion with suboptions
+- [ ] Implement value completion (booleans, choices)
+- [ ] Handle trigger characters (=:=, =-=)
+- [ ] Implement completion resolve for lazy documentation
+- [ ] Write extensive tests with fixture playbooks
+
 *** Porting Tiers
-Reference for TypeScript → Python porting order.
 
 | Tier | Focus            | Status | Key Files                                        |
 |------+------------------+--------+--------------------------------------------------|
@@ -113,7 +111,7 @@ tests/utils/test_yaml_utils.py: 9 passed
 ============================== 59 passed in 0.33s ==============================
 #+end_example
 
-** Python Port
+** Implementation
 :PROPERTIES:
 :ID:       python-port-docs
 :END:
@@ -126,8 +124,11 @@ The Python port of ansible-language-server aims to:
 4. *Better Developer Experience* - Format with =black=, lint with =ruff=, type-check with =mypy=, all working on Python code
 
 *** Architecture
+:PROPERTIES:
+:ID:       architecture
+:END:
 
-The server follows the standard Language Server Protocol architecture, built on [[https://github.com/openlawlibrary/pygls][pygls]]:
+The server follows the standard Language Server Protocol architecture, built on [[https://github.com/openlawlibrary/pygls][pygls]]. For TypeScript codebase structure, see [[*TypeScript Codebase Overview][TypeScript Codebase Overview]].
 
 #+begin_src
 ┌─────────────────────────────────────────────────────────────────┐
@@ -154,12 +155,16 @@ The server follows the standard Language Server Protocol architecture, built on 
 └─────────────────────────────────────────────────────────────────┘
 #+end_src
 
-**** pygls for LSP
+**** Server Entry Point
+:PROPERTIES:
+:ID:       server-entry-point
+:END:
 
-=pygls= is the de-facto Python Language Server Protocol framework. It provides full LSP spec compliance, native async/await support, and built-in document synchronization. It's used by pylsp, jedi-language-server, and others.
+=pygls= is the de-facto Python Language Server Protocol framework, providing full LSP spec compliance, native async/await support, and built-in document synchronization. The server entry point is minimal—pygls handles the protocol, we register feature handlers.
 
-The server entry point is minimal—pygls handles the protocol, we register feature handlers:
+*TypeScript:* =src/server.ts= (66 lines) creates a =Connection= and initializes =AnsibleLanguageService=.
 
+*Python:*
 #+begin_src python :tangle src/ansible_ls/server.py :mkdirp t
 """Ansible Language Server entry point."""
 
@@ -177,9 +182,9 @@ if __name__ == "__main__":
     main()
 #+end_src
 
-**** tree-sitter YAML Parsing
+*** YAML Parsing
 :PROPERTIES:
-:ID:       tree-sitter-yaml
+:ID:       yaml-parsing
 :END:
 
 For a language server that re-parses on every keystroke, we need:
@@ -187,7 +192,7 @@ For a language server that re-parses on every keystroke, we need:
 - *Error recovery* - Keep working with invalid YAML
 - *Position tracking* - Map cursor to AST nodes
 
-=tree-sitter-yaml= provides all three. The alternative (=ruamel.yaml=) is pure Python, lacks incremental parsing, and fails on invalid YAML.
+**** Why tree-sitter
 
 | Feature             | tree-sitter-yaml               | ruamel.yaml             |
 |---------------------+--------------------------------+-------------------------|
@@ -196,7 +201,9 @@ For a language server that re-parses on every keystroke, we need:
 | Performance         | *C implementation*             | Pure Python             |
 | Error Recovery      | *Partial parse on errors*      | Fails on invalid YAML   |
 
-The parsing API wraps tree-sitter's C bindings:
+*TypeScript:* =src/utils/yaml.ts= (663 lines) uses the npm =yaml= package with custom AST traversal.
+
+*Python:* We use =tree-sitter-yaml= which provides all three requirements. tree-sitter-yaml produces more wrapper nodes than npm =yaml=, so [[*AncestryBuilder][AncestryBuilder]] skips intermediate nodes during navigation.
 
 #+begin_src python :tangle src/ansible_ls/utils/yaml_utils.py :mkdirp t
 """YAML AST utilities using tree-sitter.
@@ -271,14 +278,16 @@ def get_path_to_position(tree, line: int, column: int) -> list:
 
 #+end_src
 
-***** AncestryBuilder
+**** AncestryBuilder
 :PROPERTIES:
 :ID:       ancestry-builder
 :END:
 
-The TypeScript codebase uses =AncestryBuilder= to navigate from a cursor position up through the AST. For example, finding "am I inside a task?" requires walking from the current node up to find =tasks:= in the parent structure.
+=AncestryBuilder= navigates from a cursor position up through the AST. For example, finding "am I inside a task?" requires walking from the current node up to find =tasks:= in the parent structure.
 
-tree-sitter-yaml produces more wrapper nodes than the npm =yaml= package, so we skip intermediate nodes (=flow_node=, =plain_scalar=, etc.) during navigation:
+*TypeScript:* The =AncestryBuilder= class in =yaml.ts= works with npm =yaml='s AST.
+
+*Python:* tree-sitter-yaml produces wrapper nodes (=flow_node=, =plain_scalar=, etc.) that npm =yaml= doesn't have, so we skip them:
 
 #+begin_src python :tangle src/ansible_ls/utils/yaml_utils.py
 class AncestryBuilder:
@@ -406,74 +415,29 @@ class AncestryBuilder:
         return None
 #+end_src
 
-**** Ansible Keywords
+*** Ansible Keywords
 :PROPERTIES:
 :ID:       ansible-keywords
 :END:
 
-Ansible defines play/task/block/role keywords as class attributes. We can access these directly via Python imports:
+Ansible defines play/task/block/role keywords as class attributes using a descriptor pattern called =fattributes=. For detailed API research, see [[*Ansible Internal APIs][Ansible Internal APIs]].
 
-#+begin_src python
-from ansible.playbook.play import Play
-from ansible.playbook.task import Task
+*TypeScript:* =src/utils/ansible.ts= (722 lines) contains hand-maintained keyword lists with documentation strings.
 
-play_keywords = Play.fattributes.keys()   # dict_keys(['name', 'hosts', ...])
-task_keywords = Task.fattributes.keys()   # dict_keys(['name', 'action', ...])
-#+end_src
+*Python:* We use a *hybrid approach* for zero maintenance and graceful degradation:
 
-The port uses a *hybrid approach*:
+1. *Dynamic Loading* (primary) - Import keywords directly from Ansible's internal =fattributes= API:
+   #+begin_src python
+   from ansible.playbook.play import Play
+   from ansible.playbook.task import Task
 
-1. *Dynamic Loading* (primary) - Import keywords directly from Ansible's internal =fattributes= API
+   play_keywords = Play.fattributes.keys()   # dict_keys(['name', 'hosts', ...])
+   task_keywords = Task.fattributes.keys()   # dict_keys(['name', 'action', ...])
+   #+end_src
+
 2. *Static Fallback* - Hand-curated keyword list when Ansible unavailable
 
-This gives us zero maintenance for keyword lists, rich type metadata, and graceful degradation. See [[file:src/ansible_ls/utils/ansible_dynamic.py][ansible_dynamic.py]] for the dynamic loader and [[file:src/ansible_ls/utils/ansible_keywords.py][ansible_keywords.py]] for the static definitions with documentation strings.
-
-**** External Tool Integration
-:PROPERTIES:
-:ID:       external-tools
-:END:
-
-We prefer Python APIs over subprocess management where stable interfaces exist:
-
-| Tool             | Approach                   | Rationale                        |
-|------------------+----------------------------+----------------------------------|
-| Version info     | =importlib.metadata=       | No subprocess, fast, reliable    |
-| ansible-lint     | subprocess + JSON parse    | Only stable interface            |
-| Syntax check     | subprocess                 | Thread-safe, stable              |
-| Module docs      | =ansible-runner=           | Stable Python API                |
-| Containers       | =podman-py=                | Type-safe, async support         |
-
-For module documentation, =ansible-runner= provides a stable API:
-
-#+begin_src python
-import ansible_runner
-import json
-
-def get_module_docs(module_name: str) -> dict:
-    """Get module documentation via ansible-runner."""
-    output, errors = ansible_runner.get_plugin_docs(
-        plugin_names=[module_name],
-        plugin_type='module',
-        response_format='json'
-    )
-    return json.loads(output) if output else {}
-#+end_src
-
-For ansible-lint, we parse the codeclimate JSON output:
-
-#+begin_src python
-import asyncio
-import json
-
-async def run_ansible_lint(path: Path) -> list[dict]:
-    """Run ansible-lint and return parsed results."""
-    cmd = ["ansible-lint", "-f", "codeclimate", "--offline", "--nocolor", str(path)]
-    proc = await asyncio.create_subprocess_exec(
-        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-    )
-    stdout, _ = await proc.communicate()
-    return json.loads(stdout.decode()) if stdout else []
-#+end_src
+See [[file:src/ansible_ls/utils/ansible_dynamic.py][ansible_dynamic.py]] for the dynamic loader and [[file:src/ansible_ls/utils/ansible_keywords.py][ansible_keywords.py]] for the static definitions with documentation strings.
 
 *** Data Models
 :PROPERTIES:
@@ -485,7 +449,11 @@ async def run_ansible_lint(path: Path) -> list[dict]:
 :ID:       module-metadata
 :END:
 
-Ansible modules have structured documentation that we cache for hover and completion. The =ModuleMetadata= dataclass represents a discovered module, and =ModuleDocumentation= holds its parsed documentation:
+Ansible modules have structured documentation that we cache for hover and completion.
+
+*TypeScript:* =src/interfaces/module.ts= defines =IOption=, =IModuleDocumentation=, and =IModuleMetadata= interfaces.
+
+*Python:* Dataclasses provide the same structure with type hints:
 
 #+begin_src python :tangle src/ansible_ls/models/module.py :mkdirp t
 """Module metadata and documentation models.
@@ -573,7 +541,11 @@ __all__ = ["ModuleMetadata", "ModuleDocumentation", "Option"]
 :ID:       extension-settings
 :END:
 
-Settings map to VS Code's =ansible.*= configuration namespace. Nested dataclasses mirror the JSON structure:
+Settings map to VS Code's =ansible.*= configuration namespace.
+
+*TypeScript:* =src/interfaces/extensionSettings.ts= defines nested interfaces for settings.
+
+*Python:* Nested dataclasses mirror the JSON structure:
 
 #+begin_src python :tangle src/ansible_ls/models/settings.py :mkdirp t
 """Extension settings model.
@@ -715,8 +687,11 @@ Most services are lazy-loaded because not all workspaces need all services, expe
 :ID:       settings-service
 :END:
 
-The =SettingsManager= caches per-document settings and handles LSP configuration requests:
+The =SettingsManager= caches per-document settings and handles LSP configuration requests.
 
+*TypeScript:* =src/services/settingsManager.ts= (~150 lines) manages settings caching and LSP =workspace/configuration= requests.
+
+*Python:*
 #+begin_src python :tangle src/ansible_ls/services/settings_manager.py :mkdirp t
 """Settings management service.
 
@@ -801,8 +776,11 @@ class SettingsManager:
 :ID:       workspace-service
 :END:
 
-The =WorkspaceManager= creates a =WorkspaceFolderContext= for each folder in a multi-root workspace. Each context lazily initializes its services:
+The =WorkspaceManager= creates a =WorkspaceFolderContext= for each folder in a multi-root workspace.
 
+*TypeScript:* =src/services/workspaceManager.ts= (~240 lines) creates and manages per-folder contexts.
+
+*Python:*
 #+begin_src python :tangle src/ansible_ls/services/workspace_manager.py :mkdirp t
 """Workspace management service.
 
@@ -959,8 +937,11 @@ class WorkspaceManager:
 :ID:       docs-library
 :END:
 
-The =DocsLibrary= discovers and caches Ansible module documentation from builtin modules, installed collections, and playbook-adjacent collections:
+The =DocsLibrary= discovers and caches Ansible module documentation from builtin modules, installed collections, and playbook-adjacent collections.
 
+*TypeScript:* =src/services/docsLibrary.ts= (~275 lines) caches module metadata and documentation.
+
+*Python:*
 #+begin_src python :tangle src/ansible_ls/services/docs_library.py :mkdirp t
 """Documentation library service.
 
@@ -1108,8 +1089,11 @@ class DocsLibrary:
 :ID:       validation-service
 :END:
 
-The =ValidationManager= orchestrates validation from ansible-lint (primary) or syntax-check (fallback):
+The =ValidationManager= orchestrates validation from ansible-lint (primary) or syntax-check (fallback).
 
+*TypeScript:* =src/services/validationManager.ts= (~180 lines) and =src/services/ansibleLint.ts= (~200 lines) handle validation.
+
+*Python:*
 #+begin_src python :tangle src/ansible_ls/services/validation_manager.py :mkdirp t
 """Validation management service.
 
@@ -1339,8 +1323,11 @@ Each provider:
 :ID:       hover-provider
 :END:
 
-The hover provider shows documentation for keywords and modules when the user hovers over them:
+Shows documentation for keywords and modules when the user hovers over them.
 
+*TypeScript:* =src/providers/hoverProvider.ts= (~150 lines)
+
+*Python:*
 #+begin_src python :tangle src/ansible_ls/providers/hover.py :mkdirp t
 """Hover provider for Ansible playbooks.
 
@@ -1461,8 +1448,11 @@ def _format_module_documentation(name: str, doc) -> str:
 :ID:       definition-provider
 :END:
 
-The definition provider enables "go to definition" for role references, task includes, and variable files:
+Enables "go to definition" for role references, task includes, and variable files.
 
+*TypeScript:* =src/providers/definitionProvider.ts= (~120 lines)
+
+*Python:*
 #+begin_src python :tangle src/ansible_ls/providers/definition.py :mkdirp t
 """Definition provider for Ansible playbooks.
 
@@ -1616,8 +1606,11 @@ def _find_vars_file_definition(
 :ID:       completion-provider
 :END:
 
-The completion provider is the most complex (~666 lines in TypeScript). It handles context detection (play vs task vs block), module option completion with suboptions, and collection-aware module name completion:
+The most complex provider (~666 lines in TypeScript). Handles context detection (play vs task vs block), module option completion with suboptions, and collection-aware module name completion.
 
+*TypeScript:* =src/providers/completionProvider.ts= (666 lines) with extensive context detection logic.
+
+*Python:*
 #+begin_src python :tangle src/ansible_ls/providers/completion.py :mkdirp t
 """Completion provider for Ansible playbooks.
 
@@ -1884,194 +1877,48 @@ def _get_value_completions(context: CompletionContext) -> list[types.CompletionI
     return items
 #+end_src
 
-*** Appendix
-:PROPERTIES:
-:CREATED:  [2026-01-29 Wed]
-:END:
-
-
-**** Python Project Structure
-:PROPERTIES:
-:ID:       e70a1915-93e5-4168-bdbc-acee0e38ed54
-:END:
-
-- Note taken on [2026-01-29 Thu 12:37] \\
-  replace the src block with executable code that generates it based on the current contents. Store comments and other data as you see fit. This will end up a build job in CI or something. We're not using make, but 'make docs' comes to mind. we're gonna eventually publish these org files to github wiki. keep it as simple as possible. Shell or python. Or elisp, we're in Org mode after all. Whatever's clearest and cleanest.
-#+begin_src
-ansible-language-server-py/
-├── pyproject.toml
-├── src/
-│   └── ansible_ls/
-│       ├── __init__.py
-│       ├── server.py              # Entry point
-│       ├── language_service.py    # LSP orchestrator
-│       ├── models/
-│       │   ├── __init__.py
-│       │   ├── module.py          # ModuleMetadata, Option
-│       │   └── settings.py        # ExtensionSettings
-│       ├── providers/
-│       │   ├── __init__.py
-│       │   ├── completion.py
-│       │   ├── hover.py
-│       │   ├── definition.py
-│       │   ├── validation.py
-│       │   └── semantic_tokens.py
-│       ├── services/
-│       │   ├── __init__.py
-│       │   ├── workspace.py
-│       │   ├── docs_library.py
-│       │   ├── execution_env.py
-│       │   ├── settings.py
-│       │   └── validation.py
-│       └── utils/
-│           ├── __init__.py
-│           ├── yaml_utils.py
-│           ├── ansible_keywords.py
-│           ├── docs_parser.py
-│           └── command_runner.py
-└── tests/
-    ├── conftest.py
-    ├── fixtures/
-    ├── providers/
-    └── utils/
+#+begin_src python :tangle src/ansible_ls/providers/__init__.py :mkdirp t
+"""LSP feature providers."""
 #+end_src
 
-**** DONE pyproject.toml Skeleton
-CLOSED: [2026-01-28 Tue]
+*** External Tool Integration
 :PROPERTIES:
-:ID:       65ba55a4-8fa8-4639-8e6a-6dbe276f8cf3
+:ID:       external-tools
 :END:
 
-- Note taken on [2026-01-28 Wed 18:08] \\
-  Address this warning
-  #+begin_src shell :results output :wrap example
-  uv sync
+We prefer Python APIs over subprocess management where stable interfaces exist:
 
-  #+end_src
+| Tool             | Approach                   | Rationale                        |
+|------------------+----------------------------+----------------------------------|
+| Version info     | =importlib.metadata=       | No subprocess, fast, reliable    |
+| ansible-lint     | subprocess + JSON parse    | Only stable interface            |
+| Syntax check     | subprocess                 | Thread-safe, stable              |
+| Module docs      | =ansible-runner=           | Stable Python API                |
+| Containers       | =podman-py=                | Type-safe, async support         |
 
-  #+RESULTS:
-  #+begin_example
-  warning: Skipping installation of entry points (`project.scripts`) because this project is not packaged; to install entry points, set `tool.uv.package = true` or define a `build-system`
-Using CPython 3.14.2
-Creating virtual environment at: .venv
-Resolved 22 packages in 8.12s
-Prepared 4 packages in 1.17s
-Installed 6 packages in 6ms
- + attrs==25.4.0
- + cattrs==25.3.0
- + lsprotocol==2025.0.0
- + pygls==2.0.1
- + ruamel-yaml==0.19.1
- + typing-extensions==4.15.0
-  #+end_example
+For module documentation, =ansible-runner= provides a stable API:
 
-***** Fix: Add build-system for Entry Points
-The warning occurs because =uv= only packages projects with a =[build-system]= defined.
-Adding Hatchling (PyPA-recommended, uv's default) enables entry point installation.
+#+begin_src python
+import ansible_runner
+import json
 
-#+begin_src toml :tangle pyproject.toml
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[project]
-name = "ansible-language-server"
-version = "0.1.0"
-description = "Language Server Protocol implementation for Ansible"
-requires-python = ">=3.10,<3.13"
-readme = "README.md"
-license = {text = "MIT"}
-dependencies = [
-    "pygls>=1.3.0",
-    "lsprotocol>=2023.0.0",
-    "ruamel.yaml>=0.18.0",
-    "attrs>=23.0.0",
-    "tree-sitter>=0.23.0",
-    "tree-sitter-yaml>=0.7.0",  # Use direct binding, not tree-sitter-languages
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
-    "ruff>=0.3.0",
-    "mypy>=1.8.0",
-    "thefuzz>=0.22.0",
-]
-container = [
-    "podman>=5.0.0",
-]
-ansible = [
-    "ansible-runner>=2.4.0",
-]
-
-[project.scripts]
-ansible-language-server = "ansible_ls.server:main"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/ansible_ls"]
-
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-testpaths = ["tests"]
-
-[tool.ruff]
-line-length = 88
-target-version = "py310"
-
-[tool.mypy]
-python_version = "3.10"
-strict = true
+def get_module_docs(module_name: str) -> dict:
+    """Get module documentation via ansible-runner."""
+    output, errors = ansible_runner.get_plugin_docs(
+        plugin_names=[module_name],
+        plugin_type='module',
+        response_format='json'
+    )
+    return json.loads(output) if output else {}
 #+end_src
 
-***** DONE Installation with Entry Points
-CLOSED: [2026-01-28 Tue]
+*** Test Infrastructure
 :PROPERTIES:
-:ID:       ef3ae54d-b360-446f-abd0-b3e0938b5945
+:ID:       test-infrastructure
 :END:
-- Note taken on [2026-01-28 Wed 19:03] \\
-  lettuce tweak the python version here
-  #+begin_example
-  error: Distribution `tree-sitter-languages==1.10.2` can't be installed
-  hint: You're using CPython 3.14 (`cp314`), but `tree-sitter-languages` only has wheels for: `cp310`, `cp311`, `cp312`
-  #+end_example
 
-****** Fix: Pin Python to 3.12
-=tree-sitter-languages= only has pre-built wheels for Python 3.10-3.12. Pin version until wheels for 3.13+ are released.
-
-#+begin_src text :tangle .python-version
-3.12
-#+end_src
-
-Update =pyproject.toml= to require Python <3.13:
-#+begin_src toml
-requires-python = ">=3.10,<3.13"
-#+end_src
-
-After fixing Python version:
-#+begin_src bash :results output :wrap example
-rm -rf .venv uv.lock && uv sync && uv pip install -e .
-#+end_src
-
-***** Build System Options
-| Build System | Best For                          | uv Integration |
-|--------------+-----------------------------------+----------------|
-| Hatchling    | General Python projects (default) | Excellent      |
-| Setuptools   | Complex packages with C ext       | Good           |
-| uv_build     | Pure Python, minimal config       | Best           |
-
-Hatchling recommended for language servers — production-ready, minimal config.
-
-
-**** DONE Pytest Infrastructure
-CLOSED: [2026-01-28 Tue]
-:PROPERTIES:
-:ID:       a1b2c3d4-e5f6-7890-abcd-ef1234567890
-:END:
 Port of =test/helper.ts= to pytest fixtures and utilities.
 
-***** tests/conftest.py
-Shared fixtures for all tests. Port of TypeScript helper functions.
 #+begin_src python :tangle tests/conftest.py :mkdirp t
 """Pytest configuration and shared fixtures for ansible-language-server tests."""
 
@@ -2226,8 +2073,6 @@ def smart_filter(completion_list: list, trigger_character: Optional[str] = None)
     return [choice_map[r[0]] for r in results if r[1] > 40]
 #+end_src
 
-#+RESULTS:
-
 #+begin_src python :tangle tests/__init__.py :mkdirp t
 """Ansible Language Server test suite."""
 #+end_src
@@ -2358,10 +2203,12 @@ class TestYamlParsing:
 :VISIBILITY: folded
 :END:
 
-*** TypeScript Codebase Analysis
+*** TypeScript Codebase Overview
 :PROPERTIES:
-:CREATED:  [2026-01-28 Tue]
+:ID:       typescript-overview
 :END:
+
+Referenced from [[*Architecture][Architecture]].
 
 The ansible-language-server is a TypeScript implementation of the Language Server Protocol for Ansible playbooks. Total: ~7,126 lines across 34 files.
 
@@ -2392,10 +2239,12 @@ Key modules by complexity:
 | ansibleLanguageService.ts |   365 | Medium     |
 | docsLibrary.ts            |   275 | Medium     |
 
-*** Container Management (podman-py)
+*** Container Management
 :PROPERTIES:
-:CREATED:  [2026-01-28 Tue]
+:ID:       container-management
 :END:
+
+Referenced from [[*External Tool Integration][External Tool Integration]] and the Status Dashboard.
 
 For execution environment support, we use [[https://github.com/containers/podman-py][podman-py]] (official Podman Python SDK) instead of subprocess calls:
 
@@ -2427,8 +2276,10 @@ class ExecutionEnvironment:
 
 *** Ansible Internal APIs
 :PROPERTIES:
-:CREATED:  [2026-01-28 Tue]
+:ID:       ansible-internal-apis
 :END:
+
+Referenced from [[*Ansible Keywords][Ansible Keywords]].
 
 Ansible defines play/task/block/role keywords as class attributes using a descriptor pattern:
 
@@ -2455,6 +2306,11 @@ print(attr.default)    # default value
 *Stability Assessment:* Ansible's internal APIs are *not publicly supported*, but the attribute system is core to playbook parsing since Ansible 2.0. Most changes are additive. We wrap in try/except for fallback.
 
 *** Dependency Mapping
+:PROPERTIES:
+:ID:       dependency-mapping
+:END:
+
+Referenced from [[*Architecture][Architecture]].
 
 | TypeScript                  | Python Equivalent                   | Notes                    |
 |-----------------------------+-------------------------------------+--------------------------|
@@ -2466,7 +2322,82 @@ print(attr.default)    # default value
 | ini                         | configparser                        | Standard library         |
 | @flatten-js/interval-tree   | sortedcontainers                    | Interval tree            |
 
+*** Project Configuration
+:PROPERTIES:
+:ID:       project-configuration
+:END:
+
+Referenced from [[*TODO Progress][TODO Progress]].
+
+**** pyproject.toml
+
+#+begin_src toml :tangle pyproject.toml
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ansible-language-server"
+version = "0.1.0"
+description = "Language Server Protocol implementation for Ansible"
+requires-python = ">=3.10,<3.13"
+readme = "README.md"
+license = {text = "MIT"}
+dependencies = [
+    "pygls>=1.3.0",
+    "lsprotocol>=2023.0.0",
+    "ruamel.yaml>=0.18.0",
+    "attrs>=23.0.0",
+    "tree-sitter>=0.23.0",
+    "tree-sitter-yaml>=0.7.0",  # Use direct binding, not tree-sitter-languages
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.3.0",
+    "mypy>=1.8.0",
+    "thefuzz>=0.22.0",
+]
+container = [
+    "podman>=5.0.0",
+]
+ansible = [
+    "ansible-runner>=2.4.0",
+]
+
+[project.scripts]
+ansible-language-server = "ansible_ls.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ansible_ls"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+#+end_src
+
+**** Python Version
+
+=tree-sitter-languages= only has pre-built wheels for Python 3.10-3.12. Pin version until wheels for 3.13+ are released.
+
+#+begin_src text :tangle .python-version
+3.12
+#+end_src
+
 *** Package Initialization
+:PROPERTIES:
+:ID:       package-init
+:END:
 
 #+begin_src python :tangle src/ansible_ls/__init__.py :mkdirp t
 """Ansible Language Server - Python implementation using pygls."""
@@ -2480,8 +2411,4 @@ __version__ = "0.1.0"
 from .yaml_utils import get_node_at_position, parse_yaml
 
 __all__ = ["get_node_at_position", "parse_yaml"]
-#+end_src
-
-#+begin_src text :tangle .python-version
-3.12
 #+end_src
