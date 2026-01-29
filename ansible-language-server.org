@@ -162,7 +162,7 @@ The server follows the standard Language Server Protocol architecture, built on 
 
 =pygls= is the de-facto Python Language Server Protocol framework, providing full LSP spec compliance, native async/await support, and built-in document synchronization. The server entry point is minimal—pygls handles the protocol, we register feature handlers.
 
-*TypeScript:* =src/server.ts= (66 lines) creates a =Connection= and initializes =AnsibleLanguageService=.
+*TypeScript:* [[file:src/server.ts][src/server.ts]] (66 lines) creates a =Connection= and initializes =AnsibleLanguageService=.
 
 *Python:*
 #+begin_src python :tangle src/ansible_ls/server.py :mkdirp t
@@ -201,7 +201,7 @@ For a language server that re-parses on every keystroke, we need:
 | Performance         | *C implementation*             | Pure Python             |
 | Error Recovery      | *Partial parse on errors*      | Fails on invalid YAML   |
 
-*TypeScript:* =src/utils/yaml.ts= (663 lines) uses the npm =yaml= package with custom AST traversal.
+*TypeScript:* [[file:src/utils/yaml.ts][src/utils/yaml.ts]] (663 lines) uses the npm =yaml= package with custom AST traversal.
 
 *Python:* We use =tree-sitter-yaml= which provides all three requirements. tree-sitter-yaml produces more wrapper nodes than npm =yaml=, so [[*AncestryBuilder][AncestryBuilder]] skips intermediate nodes during navigation.
 
@@ -422,7 +422,7 @@ class AncestryBuilder:
 
 Ansible defines play/task/block/role keywords as class attributes using a descriptor pattern called =fattributes=. For detailed API research, see [[*Ansible Internal APIs][Ansible Internal APIs]].
 
-*TypeScript:* =src/utils/ansible.ts= (722 lines) contains hand-maintained keyword lists with documentation strings.
+*TypeScript:* [[file:src/utils/ansible.ts][src/utils/ansible.ts]] (722 lines) contains hand-maintained keyword lists with documentation strings.
 
 *Python:* We use a *hybrid approach* for zero maintenance and graceful degradation:
 
@@ -451,7 +451,7 @@ See [[file:src/ansible_ls/utils/ansible_dynamic.py][ansible_dynamic.py]] for the
 
 Ansible modules have structured documentation that we cache for hover and completion.
 
-*TypeScript:* =src/interfaces/module.ts= defines =IOption=, =IModuleDocumentation=, and =IModuleMetadata= interfaces.
+*TypeScript:* [[file:src/interfaces/module.ts][src/interfaces/module.ts]] defines =IOption=, =IModuleDocumentation=, and =IModuleMetadata= interfaces.
 
 *Python:* Dataclasses provide the same structure with type hints:
 
@@ -543,7 +543,7 @@ __all__ = ["ModuleMetadata", "ModuleDocumentation", "Option"]
 
 Settings map to VS Code's =ansible.*= configuration namespace.
 
-*TypeScript:* =src/interfaces/extensionSettings.ts= defines nested interfaces for settings.
+*TypeScript:* [[file:src/interfaces/extensionSettings.ts][src/interfaces/extensionSettings.ts]] defines nested interfaces for settings.
 
 *Python:* Nested dataclasses mirror the JSON structure:
 
@@ -689,7 +689,7 @@ Most services are lazy-loaded because not all workspaces need all services, expe
 
 The =SettingsManager= caches per-document settings and handles LSP configuration requests.
 
-*TypeScript:* =src/services/settingsManager.ts= (~150 lines) manages settings caching and LSP =workspace/configuration= requests.
+*TypeScript:* [[file:src/services/settingsManager.ts][src/services/settingsManager.ts]] (~150 lines) manages settings caching and LSP =workspace/configuration= requests.
 
 *Python:*
 #+begin_src python :tangle src/ansible_ls/services/settings_manager.py :mkdirp t
@@ -778,7 +778,7 @@ class SettingsManager:
 
 The =WorkspaceManager= creates a =WorkspaceFolderContext= for each folder in a multi-root workspace.
 
-*TypeScript:* =src/services/workspaceManager.ts= (~240 lines) creates and manages per-folder contexts.
+*TypeScript:* [[file:src/services/workspaceManager.ts][src/services/workspaceManager.ts]] (~240 lines) creates and manages per-folder contexts.
 
 *Python:*
 #+begin_src python :tangle src/ansible_ls/services/workspace_manager.py :mkdirp t
@@ -939,7 +939,7 @@ class WorkspaceManager:
 
 The =DocsLibrary= discovers and caches Ansible module documentation from builtin modules, installed collections, and playbook-adjacent collections.
 
-*TypeScript:* =src/services/docsLibrary.ts= (~275 lines) caches module metadata and documentation.
+*TypeScript:* [[file:src/services/docsLibrary.ts][src/services/docsLibrary.ts]] (~275 lines) caches module metadata and documentation.
 
 *Python:*
 #+begin_src python :tangle src/ansible_ls/services/docs_library.py :mkdirp t
@@ -1091,7 +1091,7 @@ class DocsLibrary:
 
 The =ValidationManager= orchestrates validation from ansible-lint (primary) or syntax-check (fallback).
 
-*TypeScript:* =src/services/validationManager.ts= (~180 lines) and =src/services/ansibleLint.ts= (~200 lines) handle validation.
+*TypeScript:* [[file:src/services/validationManager.ts][src/services/validationManager.ts]] (~180 lines) and [[file:src/services/ansibleLint.ts][src/services/ansibleLint.ts]] (~200 lines) handle validation.
 
 *Python:*
 #+begin_src python :tangle src/ansible_ls/services/validation_manager.py :mkdirp t
@@ -1325,7 +1325,7 @@ Each provider:
 
 Shows documentation for keywords and modules when the user hovers over them.
 
-*TypeScript:* =src/providers/hoverProvider.ts= (~150 lines)
+*TypeScript:* [[file:src/providers/hoverProvider.ts][src/providers/hoverProvider.ts]] (~150 lines)
 
 *Python:*
 #+begin_src python :tangle src/ansible_ls/providers/hover.py :mkdirp t
@@ -1450,7 +1450,7 @@ def _format_module_documentation(name: str, doc) -> str:
 
 Enables "go to definition" for role references, task includes, and variable files.
 
-*TypeScript:* =src/providers/definitionProvider.ts= (~120 lines)
+*TypeScript:* [[file:src/providers/definitionProvider.ts][src/providers/definitionProvider.ts]] (~120 lines)
 
 *Python:*
 #+begin_src python :tangle src/ansible_ls/providers/definition.py :mkdirp t
@@ -1608,7 +1608,7 @@ def _find_vars_file_definition(
 
 The most complex provider (~666 lines in TypeScript). Handles context detection (play vs task vs block), module option completion with suboptions, and collection-aware module name completion.
 
-*TypeScript:* =src/providers/completionProvider.ts= (666 lines) with extensive context detection logic.
+*TypeScript:* [[file:src/providers/completionProvider.ts][src/providers/completionProvider.ts]] (666 lines) with extensive context detection logic.
 
 *Python:*
 #+begin_src python :tangle src/ansible_ls/providers/completion.py :mkdirp t
