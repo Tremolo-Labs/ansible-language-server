@@ -2,7 +2,163 @@
 ** Python port
 pygls. After this we can use built-in tooling as well as incorporate tree-sitter parsers, provide ~documentFormatting~ with =black= and such. All kinds of goodies.
 
-*** Codebase Analysis
+*** Python Port Overview
+:PROPERTIES:
+:CREATED:  [2026-01-29 Wed]
+:END:
+
+**** Goals and Benefits
+
+The Python port of ansible-language-server aims to:
+
+1. *Native Ansible Integration* - Import Ansible's internal APIs directly for keyword validation, module discovery, and documentation rather than reimplementing or shelling out
+2. *Modern Tooling* - Use =tree-sitter= for fast, incremental YAML parsing with position tracking instead of slower pure-Python parsers
+3. *Simplified Architecture* - Replace complex subprocess management with Python library calls (=podman-py=, =importlib.metadata=, =ansible-runner=)
+4. *Better Developer Experience* - Format with =black=, lint with =ruff=, type-check with =mypy=, all working on Python code
+
+**** Architecture Diagram
+
+#+begin_src
+                    ┌─────────────────────────────────────────┐
+                    │           Language Server (pygls)        │
+                    │  ┌─────────────────────────────────────┐ │
+                    │  │    Providers (LSP Features)          │ │
+                    │  │  ┌──────────┐ ┌──────────┐          │ │
+                    │  │  │ Hover    │ │Definition│ ...      │ │
+                    │  │  └────┬─────┘ └────┬─────┘          │ │
+                    │  └───────┼────────────┼────────────────┘ │
+                    │          │            │                  │
+                    │  ┌───────▼────────────▼────────────────┐ │
+                    │  │         Services Layer               │ │
+                    │  │  ┌────────────┐ ┌────────────────┐   │ │
+                    │  │  │DocsLibrary │ │WorkspaceManager│   │ │
+                    │  │  └─────┬──────┘ └───────┬────────┘   │ │
+                    │  │        │                │            │ │
+                    │  │  ┌─────▼──────┐  ┌──────▼───────┐   │ │
+                    │  │  │AnsibleCfg  │  │SettingsManager│  │ │
+                    │  │  └────────────┘  └──────────────┘   │ │
+                    │  └─────────────────────────────────────┘ │
+                    │                    │                     │
+                    └────────────────────┼─────────────────────┘
+                                         │
+           ┌─────────────────────────────┼─────────────────────────────┐
+           │                             │                             │
+    ┌──────▼──────┐              ┌───────▼───────┐             ┌───────▼───────┐
+    │ tree-sitter │              │ Ansible APIs   │             │ External Tools│
+    │   (YAML)    │              │ (keywords,     │             │ (ansible-lint,│
+    │             │              │  modules)      │             │  podman)      │
+    └─────────────┘              └───────────────┘             └───────────────┘
+#+end_src
+
+**** Implementation Status Dashboard
+
+| Component               | Status | Lines | Notes                                  |
+|-------------------------+--------+-------+----------------------------------------|
+| *Utils*                 |        |       |                                        |
+| =ansible_keywords.py=     | ✅ DONE |  ~670 | Static keyword definitions + docs      |
+| =ansible_dynamic.py=      | ✅ DONE |  ~260 | Dynamic keyword loading from Ansible   |
+| =yaml_utils.py=           | ✅ DONE |  ~180 | tree-sitter YAML AST navigation        |
+| =docsParser.py=           | TODO   |  ~200 | Port from TypeScript                   |
+| =docsFinder.py=           | TODO   |  ~150 | Port from TypeScript                   |
+| =commandRunner.py=        | TODO   |  ~100 | subprocess wrapper                     |
+|-------------------------+--------+-------+----------------------------------------|
+| *Models*                |        |       |                                        |
+| =module.py=               | ✅ DONE |   ~70 | ModuleMetadata, Option dataclasses     |
+| =settings.py=             | TODO   |  ~100 | ExtensionSettings dataclass            |
+|-------------------------+--------+-------+----------------------------------------|
+| *Services*              |        |       |                                        |
+| =settings.py=             | TODO   |  ~150 | Settings management                    |
+| =workspace.py=            | TODO   |  ~240 | Multi-folder workspace contexts        |
+| =docs_library.py=         | TODO   |  ~275 | Module documentation cache             |
+| =validation.py=           | TODO   |  ~180 | Validation orchestration               |
+| =ansible_lint.py=         | TODO   |  ~200 | ansible-lint integration               |
+| =execution_env.py=        | TODO   |  ~536 | Podman/Docker container support        |
+|-------------------------+--------+-------+----------------------------------------|
+| *Providers*             |        |       |                                        |
+| =hover.py=                | TODO   |  ~150 | Hover documentation                    |
+| =definition.py=           | TODO   |  ~120 | Go-to-definition                       |
+| =completion.py=           | TODO   |  ~666 | Auto-completion (most complex)         |
+| =validation.py=           | TODO   |  ~180 | Diagnostic publishing                  |
+| =semantic_tokens.py=      | TODO   |  ~200 | Semantic highlighting                  |
+|-------------------------+--------+-------+----------------------------------------|
+| *Server*                |        |       |                                        |
+| =server.py=               | ✅ DONE |   ~15 | Minimal pygls entry point              |
+
+*Tests:* 59 passing (27 dynamic keyword tests, 23 static keyword tests, 9 YAML utils tests)
+
+**** Quick Start for Contributors
+
+#+begin_src bash
+# Clone and setup
+git clone <repo>
+cd ansible-language-server
+uv sync
+
+# Run tests
+uv run pytest tests/ -v
+
+# Tangle code from this org file
+# In Emacs: C-c C-v t
+
+# Run the language server
+uv run ansible-language-server
+#+end_src
+
+*** Design Decisions
+:PROPERTIES:
+:CREATED:  [2026-01-29 Wed]
+:END:
+
+**** Why pygls
+
+=pygls= is the de-facto Python Language Server Protocol framework:
+- Full LSP spec compliance
+- Native async/await support
+- Built-in document synchronization
+- Active maintenance (Microsoft-backed)
+- Used by pylsp, jedi-language-server, and others
+
+**** Why tree-sitter over ruamel.yaml
+
+| Feature              | tree-sitter-yaml             | ruamel.yaml                  |
+|----------------------+------------------------------+------------------------------|
+| Position Tracking    | Native (start/end points)    | Native (lc attrs)            |
+| Incremental Parsing  | *Yes* (efficient updates)    | No                           |
+| Parent Traversal     | Cursor-based                 | Direct parent refs           |
+| Performance          | *Optimized (C implementation)* | Pure Python (slower)       |
+| Error Recovery       | *Partial parse on errors*    | Fails on invalid YAML        |
+
+For a language server that re-parses on every keystroke, incremental parsing and error recovery are critical.
+
+**** Hybrid Keyword Approach
+
+The port uses a hybrid approach for keyword validation:
+
+1. *Dynamic Loading* (primary) - Import keywords directly from Ansible's internal =fattributes= API
+2. *Static Fallback* - Hand-curated keyword list with documentation strings when Ansible unavailable
+
+Benefits:
+- Zero maintenance for keyword lists (auto-syncs with user's Ansible version)
+- Rich type metadata for validation and completion
+- Graceful degradation when Ansible not installed
+- Documentation strings preserved (Ansible internals don't include user-facing docs)
+
+**** Python APIs vs Subprocess
+
+| Command              | Approach                | Rationale                        |
+|----------------------+-------------------------+----------------------------------|
+| Version detection    | =importlib.metadata=      | No subprocess, fast, reliable    |
+| ansible-lint         | subprocess + JSON parse | Only stable interface            |
+| Syntax check         | subprocess              | Thread-safe, stable              |
+| Module docs          | =ansible-runner=          | Stable Python API                |
+| Container management | =podman-py=               | Type-safe, async support         |
+
+*** Implementation Reference
+:PROPERTIES:
+:CREATED:  [2026-01-28 Tue]
+:END:
+
+**** Codebase Analysis
 :PROPERTIES:
 :CREATED:  [2026-01-28 Tue]
 :END:
@@ -750,6 +906,1541 @@ Use =podman-py= for container lifecycle, keep =subprocess= only for platform det
 ***** Tier 6: LSP Core
 - =ansibleLanguageService.ts=
 - =server.ts=
+
+*** Service Porting Guide
+:PROPERTIES:
+:CREATED:  [2026-01-29 Wed]
+:END:
+
+This section provides detailed porting notes for each service, including dependency graphs, Python code skeletons with =:tangle= directives, and implementation checklists.
+
+**** Service Dependency Graph
+
+Services initialize in a specific order with lazy loading for expensive operations:
+
+#+begin_src
+Connection (pygls LanguageServer)
+    │
+    ├──→ SettingsManager (eager)
+    │        └─ Manages workspace/document settings
+    │
+    └──→ WorkspaceManager (eager)
+             │
+             └──→ WorkspaceFolderContext (per workspace folder)
+                      │
+                      ├──→ DocumentSettings (lazy, per-document)
+                      │
+                      ├──→ MetadataLibrary (eager)
+                      │        └─ Tracks ansible-lint version metadata
+                      │
+                      ├──→ ExecutionEnvironment (lazy, async)
+                      │        └─ Container management via podman-py
+                      │
+                      ├──→ AnsibleConfig (lazy, async)
+                      │        └─ Parses ansible.cfg for paths
+                      │
+                      ├──→ DocsLibrary (lazy, async)
+                      │        └─ Module documentation cache
+                      │        └─ Depends on: AnsibleConfig, ExecutionEnvironment
+                      │
+                      ├──→ AnsibleLint (lazy, sync)
+                      │        └─ Runs ansible-lint subprocess
+                      │
+                      └──→ AnsiblePlaybook (lazy, sync)
+                               └─ Runs ansible-playbook --syntax-check
+#+end_src
+
+*Key insight:* Most services are lazy-loaded because:
+1. Not all workspaces need all services
+2. Expensive initialization (subprocess, container) should be deferred
+3. Services may fail gracefully if dependencies unavailable
+
+**** Settings & Configuration Layer
+
+***** src/ansible_ls/models/settings.py
+
+Settings dataclass matching VS Code extension configuration schema.
+
+#+begin_src python :tangle src/ansible_ls/models/settings.py :mkdirp t
+"""Extension settings model.
+
+Port of src/interfaces/extensionSettings.ts
+"""
+
+from dataclasses import dataclass, field
+from typing import Optional
+
+
+@dataclass
+class ExecutionEnvironmentSettings:
+    """Execution environment (container) settings."""
+    enabled: bool = False
+    container_engine: str = "auto"  # "auto", "podman", "docker"
+    image: str = ""
+    pull_policy: str = "missing"  # "always", "missing", "never", "tag"
+    pull_arguments: str = ""
+    container_options: str = ""
+    volume_mounts: list[dict] = field(default_factory=list)
+
+
+@dataclass
+class CompletionSettings:
+    """Completion provider settings."""
+    provide_redirect_modules: bool = True
+    provide_module_option_aliases: bool = True
+
+
+@dataclass
+class ValidationSettings:
+    """Validation settings."""
+    enabled: bool = True
+    lint: "LintSettings" = field(default_factory=lambda: LintSettings())
+
+
+@dataclass
+class LintSettings:
+    """ansible-lint settings."""
+    enabled: bool = True
+    path: str = "ansible-lint"
+    arguments: str = ""
+
+
+@dataclass
+class AnsibleSettings:
+    """Root settings for Ansible Language Server.
+
+    Maps to VS Code's ansible.* configuration namespace.
+    """
+    # Python interpreter
+    python_interpreter_path: str = ""
+    python_activation_script: str = ""
+
+    # Ansible paths
+    ansible_path: str = "ansible"
+
+    # Feature toggles
+    use_fully_qualified_collection_names: bool = True
+
+    # Nested settings
+    execution_environment: ExecutionEnvironmentSettings = field(
+        default_factory=ExecutionEnvironmentSettings
+    )
+    completion: CompletionSettings = field(default_factory=CompletionSettings)
+    validation: ValidationSettings = field(default_factory=ValidationSettings)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "AnsibleSettings":
+        """Create settings from a dictionary (e.g., from LSP configuration)."""
+        # Handle nested objects
+        ee_data = data.get("executionEnvironment", {})
+        completion_data = data.get("completion", {})
+        validation_data = data.get("validation", {})
+        lint_data = validation_data.get("lint", {})
+
+        return cls(
+            python_interpreter_path=data.get("python", {}).get("interpreterPath", ""),
+            python_activation_script=data.get("python", {}).get("activationScript", ""),
+            ansible_path=data.get("ansiblePath", "ansible"),
+            use_fully_qualified_collection_names=data.get(
+                "useFullyQualifiedCollectionNames", True
+            ),
+            execution_environment=ExecutionEnvironmentSettings(
+                enabled=ee_data.get("enabled", False),
+                container_engine=ee_data.get("containerEngine", "auto"),
+                image=ee_data.get("image", ""),
+                pull_policy=ee_data.get("pull", {}).get("policy", "missing"),
+                pull_arguments=ee_data.get("pull", {}).get("arguments", ""),
+                container_options=ee_data.get("containerOptions", ""),
+                volume_mounts=ee_data.get("volumeMounts", []),
+            ),
+            completion=CompletionSettings(
+                provide_redirect_modules=completion_data.get(
+                    "provideRedirectModules", True
+                ),
+                provide_module_option_aliases=completion_data.get(
+                    "provideModuleOptionAliases", True
+                ),
+            ),
+            validation=ValidationSettings(
+                enabled=validation_data.get("enabled", True),
+                lint=LintSettings(
+                    enabled=lint_data.get("enabled", True),
+                    path=lint_data.get("path", "ansible-lint"),
+                    arguments=lint_data.get("arguments", ""),
+                ),
+            ),
+        )
+#+end_src
+
+***** src/ansible_ls/services/settings_manager.py
+
+Manages per-document and workspace-level settings.
+
+#+begin_src python :tangle src/ansible_ls/services/settings_manager.py :mkdirp t
+"""Settings management service.
+
+Port of src/services/settingsManager.ts
+"""
+
+from typing import Optional
+from urllib.parse import urlparse
+
+from pygls.server import LanguageServer
+
+from ..models.settings import AnsibleSettings
+
+
+class SettingsManager:
+    """Manages document and workspace settings.
+
+    Caches settings per-document URI and handles LSP configuration requests.
+    """
+
+    def __init__(self, server: LanguageServer) -> None:
+        self._server = server
+        self._settings: dict[str, AnsibleSettings] = {}
+        self._global_settings: Optional[AnsibleSettings] = None
+
+    async def get(self, uri: str) -> AnsibleSettings:
+        """Get settings for a document URI.
+
+        Requests configuration from client if not cached.
+        """
+        if uri in self._settings:
+            return self._settings[uri]
+
+        # Request configuration from client
+        config = await self._server.get_configuration_async(
+            items=[{"scopeUri": uri, "section": "ansible"}]
+        )
+
+        if config and len(config) > 0:
+            settings = AnsibleSettings.from_dict(config[0] or {})
+        else:
+            settings = AnsibleSettings()
+
+        self._settings[uri] = settings
+        return settings
+
+    def get_cached(self, uri: str) -> Optional[AnsibleSettings]:
+        """Get cached settings without requesting from client."""
+        return self._settings.get(uri)
+
+    def invalidate(self, uri: Optional[str] = None) -> None:
+        """Invalidate cached settings.
+
+        Args:
+            uri: Specific URI to invalidate, or None to invalidate all.
+        """
+        if uri is None:
+            self._settings.clear()
+        elif uri in self._settings:
+            del self._settings[uri]
+
+    def get_workspace_folder_uri(self, doc_uri: str) -> Optional[str]:
+        """Get the workspace folder URI containing a document."""
+        parsed = urlparse(doc_uri)
+        doc_path = parsed.path
+
+        workspace_folders = self._server.workspace.folders
+        if not workspace_folders:
+            return None
+
+        # Find the workspace folder containing this document
+        for folder_uri, folder in workspace_folders.items():
+            folder_parsed = urlparse(folder_uri)
+            if doc_path.startswith(folder_parsed.path):
+                return folder_uri
+
+        return None
+#+end_src
+
+***** tests/services/test_settings_manager.py
+
+#+begin_src python :tangle tests/services/test_settings_manager.py :mkdirp t
+"""Tests for SettingsManager service."""
+
+import pytest
+from unittest.mock import AsyncMock, MagicMock
+
+from ansible_ls.services.settings_manager import SettingsManager
+from ansible_ls.models.settings import AnsibleSettings
+
+
+class TestSettingsManager:
+    """Test SettingsManager functionality."""
+
+    @pytest.fixture
+    def mock_server(self):
+        """Create a mock LanguageServer."""
+        server = MagicMock()
+        server.get_configuration_async = AsyncMock(return_value=[{}])
+        server.workspace.folders = {}
+        return server
+
+    @pytest.fixture
+    def settings_manager(self, mock_server):
+        """Create a SettingsManager with mock server."""
+        return SettingsManager(mock_server)
+
+    @pytest.mark.asyncio
+    async def test_get_returns_default_settings(self, settings_manager):
+        """Test that get returns default settings when no config."""
+        settings = await settings_manager.get("file:///test.yml")
+        assert isinstance(settings, AnsibleSettings)
+        assert settings.validation.enabled is True
+
+    @pytest.mark.asyncio
+    async def test_get_caches_settings(self, settings_manager, mock_server):
+        """Test that settings are cached after first request."""
+        uri = "file:///test.yml"
+
+        # First call
+        await settings_manager.get(uri)
+        # Second call - should use cache
+        await settings_manager.get(uri)
+
+        # Should only request config once
+        assert mock_server.get_configuration_async.call_count == 1
+
+    def test_invalidate_clears_cache(self, settings_manager):
+        """Test that invalidate clears the settings cache."""
+        settings_manager._settings["file:///test.yml"] = AnsibleSettings()
+        settings_manager.invalidate("file:///test.yml")
+        assert "file:///test.yml" not in settings_manager._settings
+
+    def test_invalidate_all_clears_everything(self, settings_manager):
+        """Test that invalidate without URI clears all settings."""
+        settings_manager._settings["file:///a.yml"] = AnsibleSettings()
+        settings_manager._settings["file:///b.yml"] = AnsibleSettings()
+        settings_manager.invalidate()
+        assert len(settings_manager._settings) == 0
+#+end_src
+
+***** Implementation Checklist: Settings
+
+- [ ] Port =AnsibleSettings= dataclass with all nested types
+- [ ] Implement =from_dict= factory for LSP configuration parsing
+- [ ] Implement =SettingsManager.get()= with async config request
+- [ ] Implement settings caching and invalidation
+- [ ] Handle =workspace/didChangeConfiguration= notification
+- [ ] Write tests for settings parsing edge cases
+
+**** Workspace Management Layer
+
+***** src/ansible_ls/services/workspace_manager.py
+
+Manages multi-folder workspace contexts.
+
+#+begin_src python :tangle src/ansible_ls/services/workspace_manager.py :mkdirp t
+"""Workspace management service.
+
+Port of src/services/workspaceManager.ts
+"""
+
+from typing import Optional, Protocol
+from urllib.parse import urlparse
+
+from pygls.server import LanguageServer
+from lsprotocol import types
+
+from .settings_manager import SettingsManager
+
+
+class WorkspaceFolderContext:
+    """Context for a single workspace folder.
+
+    Lazily initializes services as needed.
+    """
+
+    def __init__(
+        self,
+        workspace_folder: types.WorkspaceFolder,
+        server: LanguageServer,
+        settings_manager: SettingsManager,
+    ) -> None:
+        self._folder = workspace_folder
+        self._server = server
+        self._settings_manager = settings_manager
+
+        # Lazy-loaded services (initialized on first access)
+        self._docs_library: Optional["DocsLibrary"] = None
+        self._ansible_config: Optional["AnsibleConfig"] = None
+        self._execution_env: Optional["ExecutionEnvironment"] = None
+        self._ansible_lint: Optional["AnsibleLint"] = None
+
+    @property
+    def uri(self) -> str:
+        """Get the workspace folder URI."""
+        return self._folder.uri
+
+    @property
+    def name(self) -> str:
+        """Get the workspace folder name."""
+        return self._folder.name
+
+    async def get_docs_library(self) -> "DocsLibrary":
+        """Get or initialize the DocsLibrary for this workspace."""
+        if self._docs_library is None:
+            from .docs_library import DocsLibrary
+
+            settings = await self._settings_manager.get(self.uri)
+            self._docs_library = DocsLibrary(
+                workspace_uri=self.uri,
+                settings=settings,
+            )
+            await self._docs_library.initialize()
+        return self._docs_library
+
+    async def get_ansible_config(self) -> "AnsibleConfig":
+        """Get or initialize the AnsibleConfig for this workspace."""
+        if self._ansible_config is None:
+            from .ansible_config import AnsibleConfig
+
+            settings = await self._settings_manager.get(self.uri)
+            self._ansible_config = AnsibleConfig(
+                workspace_uri=self.uri,
+                settings=settings,
+            )
+            await self._ansible_config.initialize()
+        return self._ansible_config
+
+    def dispose(self) -> None:
+        """Clean up resources when workspace folder is removed."""
+        if self._docs_library:
+            self._docs_library.dispose()
+        if self._execution_env:
+            self._execution_env.dispose()
+
+
+class WorkspaceManager:
+    """Manages workspace folder contexts.
+
+    Creates and tracks WorkspaceFolderContext instances for each
+    workspace folder in a multi-root workspace.
+    """
+
+    def __init__(
+        self,
+        server: LanguageServer,
+        settings_manager: SettingsManager,
+    ) -> None:
+        self._server = server
+        self._settings_manager = settings_manager
+        self._contexts: dict[str, WorkspaceFolderContext] = {}
+
+    def get_context(self, uri: str) -> Optional[WorkspaceFolderContext]:
+        """Get the context for a document URI."""
+        # Find which workspace folder contains this URI
+        folder_uri = self._find_workspace_folder(uri)
+        if folder_uri:
+            return self._contexts.get(folder_uri)
+        return None
+
+    def _find_workspace_folder(self, doc_uri: str) -> Optional[str]:
+        """Find the workspace folder containing a document."""
+        parsed = urlparse(doc_uri)
+        doc_path = parsed.path
+
+        for folder_uri in self._contexts:
+            folder_parsed = urlparse(folder_uri)
+            if doc_path.startswith(folder_parsed.path):
+                return folder_uri
+
+        return None
+
+    def add_folder(self, folder: types.WorkspaceFolder) -> WorkspaceFolderContext:
+        """Add a workspace folder and create its context."""
+        context = WorkspaceFolderContext(
+            workspace_folder=folder,
+            server=self._server,
+            settings_manager=self._settings_manager,
+        )
+        self._contexts[folder.uri] = context
+        return context
+
+    def remove_folder(self, folder_uri: str) -> None:
+        """Remove a workspace folder and dispose its context."""
+        if folder_uri in self._contexts:
+            self._contexts[folder_uri].dispose()
+            del self._contexts[folder_uri]
+
+    def handle_workspace_folders_change(
+        self,
+        added: list[types.WorkspaceFolder],
+        removed: list[types.WorkspaceFolder],
+    ) -> None:
+        """Handle workspace/didChangeWorkspaceFolders notification."""
+        for folder in removed:
+            self.remove_folder(folder.uri)
+        for folder in added:
+            self.add_folder(folder)
+
+    def dispose(self) -> None:
+        """Dispose all workspace contexts."""
+        for context in self._contexts.values():
+            context.dispose()
+        self._contexts.clear()
+#+end_src
+
+***** Implementation Checklist: Workspace
+
+- [ ] Implement =WorkspaceFolderContext= with lazy service loading
+- [ ] Implement =WorkspaceManager= folder tracking
+- [ ] Handle =workspace/didChangeWorkspaceFolders= events
+- [ ] Implement proper disposal and cleanup
+- [ ] Write tests for multi-folder workspace scenarios
+
+**** Documentation Library Layer
+
+***** src/ansible_ls/services/docs_library.py
+
+Caches and provides module documentation.
+
+#+begin_src python :tangle src/ansible_ls/services/docs_library.py :mkdirp t
+"""Documentation library service.
+
+Port of src/services/docsLibrary.ts
+"""
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
+import logging
+
+from ..models.module import ModuleMetadata, ModuleDocumentation
+from ..models.settings import AnsibleSettings
+
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class DocsLibraryOptions:
+    """Options for DocsLibrary initialization."""
+    workspace_uri: str
+    settings: AnsibleSettings
+    collections_paths: list[Path] = None
+
+
+class DocsLibrary:
+    """Caches and provides Ansible module documentation.
+
+    Discovers modules from:
+    1. ansible.builtin modules (bundled with Ansible)
+    2. Collections in ANSIBLE_COLLECTIONS_PATHS
+    3. Playbook-adjacent collections (./collections)
+
+    Documentation is loaded lazily on first access.
+    """
+
+    def __init__(
+        self,
+        workspace_uri: str,
+        settings: AnsibleSettings,
+    ) -> None:
+        self._workspace_uri = workspace_uri
+        self._settings = settings
+        self._initialized = False
+
+        # Module cache: FQCN -> ModuleMetadata
+        self._modules: dict[str, ModuleMetadata] = {}
+
+        # Short name to FQCN mappings (for non-FQCN lookups)
+        self._short_names: dict[str, list[str]] = {}
+
+    async def initialize(self) -> None:
+        """Initialize the docs library by discovering modules."""
+        if self._initialized:
+            return
+
+        await self._discover_builtin_modules()
+        await self._discover_collection_modules()
+
+        self._initialized = True
+        logger.info(
+            f"DocsLibrary initialized with {len(self._modules)} modules "
+            f"for workspace {self._workspace_uri}"
+        )
+
+    async def _discover_builtin_modules(self) -> None:
+        """Discover ansible.builtin modules."""
+        # TODO: Use ansible-runner or direct imports to list modules
+        ...
+
+    async def _discover_collection_modules(self) -> None:
+        """Discover modules from installed collections."""
+        # TODO: Scan collection paths for module plugins
+        ...
+
+    def get_module(self, name: str) -> Optional[ModuleMetadata]:
+        """Get module metadata by name.
+
+        Args:
+            name: Module name (FQCN like 'ansible.builtin.debug' or
+                  short name like 'debug')
+
+        Returns:
+            ModuleMetadata if found, None otherwise.
+        """
+        # Try as FQCN first
+        if name in self._modules:
+            return self._modules[name]
+
+        # Try short name lookup
+        if name in self._short_names:
+            fqcns = self._short_names[name]
+            if len(fqcns) == 1:
+                return self._modules[fqcns[0]]
+            # Ambiguous - prefer ansible.builtin
+            for fqcn in fqcns:
+                if fqcn.startswith("ansible.builtin."):
+                    return self._modules[fqcn]
+            # Return first match
+            return self._modules[fqcns[0]]
+
+        return None
+
+    async def get_module_documentation(
+        self, name: str
+    ) -> Optional[ModuleDocumentation]:
+        """Get full documentation for a module.
+
+        Loads documentation lazily if not already cached.
+        """
+        module = self.get_module(name)
+        if not module:
+            return None
+
+        if module.documentation is None:
+            # Load documentation
+            module.documentation = await self._load_module_docs(module.fqcn)
+
+        return module.documentation
+
+    async def _load_module_docs(self, fqcn: str) -> Optional[ModuleDocumentation]:
+        """Load documentation for a module by FQCN."""
+        # TODO: Use ansible-runner.get_plugin_docs or parse DOCUMENTATION string
+        ...
+        return None
+
+    def find_modules(self, prefix: str) -> list[ModuleMetadata]:
+        """Find modules matching a prefix (for completion)."""
+        results = []
+        for fqcn, module in self._modules.items():
+            if fqcn.startswith(prefix) or module.name.startswith(prefix):
+                results.append(module)
+        return results
+
+    def dispose(self) -> None:
+        """Clean up resources."""
+        self._modules.clear()
+        self._short_names.clear()
+        self._initialized = False
+#+end_src
+
+***** Implementation Checklist: DocsLibrary
+
+- [ ] Implement builtin module discovery via =ansible-runner=
+- [ ] Implement collection module discovery by scanning paths
+- [ ] Implement lazy documentation loading
+- [ ] Handle playbook-adjacent collections
+- [ ] Implement FQCN and short name lookups
+- [ ] Write tests with mock module data
+
+**** Validation Layer
+
+***** src/ansible_ls/services/validation_manager.py
+
+Orchestrates validation from multiple sources.
+
+#+begin_src python :tangle src/ansible_ls/services/validation_manager.py :mkdirp t
+"""Validation management service.
+
+Port of src/services/validationManager.ts
+"""
+
+from typing import Optional
+from urllib.parse import urlparse
+from pathlib import Path
+import logging
+
+from lsprotocol import types
+
+from ..models.settings import AnsibleSettings
+
+
+logger = logging.getLogger(__name__)
+
+
+class ValidationManager:
+    """Orchestrates document validation.
+
+    Coordinates validation from multiple sources:
+    1. ansible-lint (primary)
+    2. ansible-playbook --syntax-check (fallback)
+    3. Built-in validation (keywords, structure)
+    """
+
+    def __init__(self, settings: AnsibleSettings) -> None:
+        self._settings = settings
+        self._pending_validations: dict[str, bool] = {}
+
+    async def validate_document(
+        self,
+        uri: str,
+        content: str,
+    ) -> list[types.Diagnostic]:
+        """Validate a document and return diagnostics.
+
+        Args:
+            uri: Document URI
+            content: Document text content
+
+        Returns:
+            List of LSP Diagnostic objects.
+        """
+        if not self._settings.validation.enabled:
+            return []
+
+        diagnostics: list[types.Diagnostic] = []
+
+        # Track pending validation (for debouncing)
+        if uri in self._pending_validations:
+            return []
+        self._pending_validations[uri] = True
+
+        try:
+            # Try ansible-lint first
+            if self._settings.validation.lint.enabled:
+                lint_diagnostics = await self._run_ansible_lint(uri, content)
+                diagnostics.extend(lint_diagnostics)
+            else:
+                # Fallback to syntax check
+                syntax_diagnostics = await self._run_syntax_check(uri, content)
+                diagnostics.extend(syntax_diagnostics)
+
+        finally:
+            self._pending_validations.pop(uri, None)
+
+        return diagnostics
+
+    async def _run_ansible_lint(
+        self, uri: str, content: str
+    ) -> list[types.Diagnostic]:
+        """Run ansible-lint and convert output to diagnostics."""
+        from .ansible_lint import run_ansible_lint
+
+        parsed = urlparse(uri)
+        file_path = Path(parsed.path)
+
+        results = await run_ansible_lint(
+            path=file_path,
+            lint_path=self._settings.validation.lint.path,
+            arguments=self._settings.validation.lint.arguments,
+        )
+
+        diagnostics = []
+        for result in results:
+            diagnostic = types.Diagnostic(
+                range=types.Range(
+                    start=types.Position(
+                        line=result.get("line", 1) - 1,
+                        character=result.get("column", 1) - 1,
+                    ),
+                    end=types.Position(
+                        line=result.get("line", 1) - 1,
+                        character=result.get("column", 1) + 100,
+                    ),
+                ),
+                message=result.get("message", ""),
+                severity=self._map_severity(result.get("severity", "warning")),
+                source="ansible-lint",
+                code=result.get("rule", {}).get("id", ""),
+            )
+            diagnostics.append(diagnostic)
+
+        return diagnostics
+
+    async def _run_syntax_check(
+        self, uri: str, content: str
+    ) -> list[types.Diagnostic]:
+        """Run ansible-playbook --syntax-check as fallback."""
+        # TODO: Implement syntax check fallback
+        ...
+        return []
+
+    def _map_severity(self, severity: str) -> types.DiagnosticSeverity:
+        """Map ansible-lint severity to LSP severity."""
+        mapping = {
+            "blocker": types.DiagnosticSeverity.Error,
+            "critical": types.DiagnosticSeverity.Error,
+            "major": types.DiagnosticSeverity.Error,
+            "minor": types.DiagnosticSeverity.Warning,
+            "info": types.DiagnosticSeverity.Information,
+        }
+        return mapping.get(severity, types.DiagnosticSeverity.Warning)
+#+end_src
+
+***** src/ansible_ls/services/ansible_lint.py
+
+#+begin_src python :tangle src/ansible_ls/services/ansible_lint.py :mkdirp t
+"""ansible-lint integration.
+
+Port of src/services/ansibleLint.ts
+"""
+
+import asyncio
+import json
+import logging
+from pathlib import Path
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+
+async def run_ansible_lint(
+    path: Path,
+    lint_path: str = "ansible-lint",
+    arguments: str = "",
+    config_path: Optional[Path] = None,
+) -> list[dict]:
+    """Run ansible-lint and return parsed results.
+
+    Args:
+        path: Path to file or directory to lint
+        lint_path: Path to ansible-lint executable
+        arguments: Additional command-line arguments
+        config_path: Path to ansible-lint config file
+
+    Returns:
+        List of lint result dictionaries.
+    """
+    cmd = [
+        lint_path,
+        "-f", "codeclimate",  # JSON output format
+        "--offline",          # Don't check for updates
+        "--nocolor",          # No ANSI colors
+    ]
+
+    if arguments:
+        cmd.extend(arguments.split())
+
+    if config_path:
+        cmd.extend(["-c", str(config_path)])
+
+    cmd.append(str(path))
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+
+        if stdout:
+            try:
+                return json.loads(stdout.decode("utf-8"))
+            except json.JSONDecodeError:
+                logger.warning(f"Failed to parse ansible-lint output: {stdout[:200]}")
+
+        if stderr and proc.returncode != 0:
+            logger.warning(f"ansible-lint stderr: {stderr.decode('utf-8')[:200]}")
+
+    except FileNotFoundError:
+        logger.error(f"ansible-lint not found at: {lint_path}")
+    except Exception as e:
+        logger.error(f"ansible-lint failed: {e}")
+
+    return []
+#+end_src
+
+***** Implementation Checklist: Validation
+
+- [ ] Implement =ValidationManager= with debouncing
+- [ ] Implement =run_ansible_lint= subprocess wrapper
+- [ ] Parse codeclimate JSON output to diagnostics
+- [ ] Implement syntax-check fallback
+- [ ] Handle execution environment (run lint in container)
+- [ ] Write tests with mock lint output
+
+*** Provider Porting Guide
+:PROPERTIES:
+:CREATED:  [2026-01-29 Wed]
+:END:
+
+This section provides detailed porting notes for LSP feature providers.
+
+**** Provider Architecture
+
+Providers in =pygls= are registered using decorators:
+
+#+begin_src python
+from pygls.server import LanguageServer
+from lsprotocol import types
+
+server = LanguageServer("name", "version")
+
+@server.feature(types.TEXT_DOCUMENT_HOVER)
+async def hover(params: types.HoverParams) -> types.Hover | None:
+    """Provide hover information."""
+    ...
+#+end_src
+
+Each provider:
+1. Receives strongly-typed params from =lsprotocol=
+2. Accesses documents via =server.workspace.get_document()=
+3. Uses services (DocsLibrary, etc.) for business logic
+4. Returns strongly-typed results or =None=
+
+**** Simple Providers: Hover
+
+***** src/ansible_ls/providers/hover.py
+
+#+begin_src python :tangle src/ansible_ls/providers/hover.py :mkdirp t
+"""Hover provider for Ansible playbooks.
+
+Port of src/providers/hoverProvider.ts
+"""
+
+from typing import Optional
+
+from lsprotocol import types
+from pygls.server import LanguageServer
+
+from ..services.docs_library import DocsLibrary
+from ..services.workspace_manager import WorkspaceManager
+from ..utils.yaml_utils import parse_yaml, get_path_to_position, AncestryBuilder
+from ..utils.ansible_keywords import get_keyword_documentation, get_keyword_text
+
+
+async def provide_hover(
+    server: LanguageServer,
+    params: types.HoverParams,
+    workspace_manager: WorkspaceManager,
+) -> Optional[types.Hover]:
+    """Provide hover information for the symbol at position.
+
+    Args:
+        server: The language server instance
+        params: Hover request parameters
+        workspace_manager: Workspace manager for accessing services
+
+    Returns:
+        Hover information or None if nothing to show.
+    """
+    uri = params.text_document.uri
+    document = server.workspace.get_document(uri)
+
+    # Parse YAML and get path to cursor
+    tree = parse_yaml(document.source)
+    path = get_path_to_position(
+        tree,
+        params.position.line,
+        params.position.character,
+    )
+
+    if not path:
+        return None
+
+    # Get the word at cursor position
+    node = path[-1]
+    word = node.text.decode("utf-8").strip()
+
+    # Determine context (play, task, block, etc.)
+    context = _determine_context(path)
+
+    # Try keyword documentation first
+    keyword_doc = get_keyword_documentation(word, context)
+    if keyword_doc:
+        text = get_keyword_text(keyword_doc)
+        return types.Hover(
+            contents=types.MarkupContent(
+                kind=types.MarkupKind.Markdown,
+                value=f"**{word}** (keyword)\n\n{text}",
+            ),
+        )
+
+    # Try module documentation
+    workspace_context = workspace_manager.get_context(uri)
+    if workspace_context:
+        docs_library = await workspace_context.get_docs_library()
+        module_doc = await docs_library.get_module_documentation(word)
+        if module_doc:
+            return types.Hover(
+                contents=types.MarkupContent(
+                    kind=types.MarkupKind.Markdown,
+                    value=_format_module_documentation(word, module_doc),
+                ),
+            )
+
+    return None
+
+
+def _determine_context(path: list) -> str:
+    """Determine the Ansible context from AST path.
+
+    Returns 'play', 'task', 'block', or 'role'.
+    """
+    builder = AncestryBuilder(path)
+
+    # Walk up looking for context indicators
+    # TODO: Implement context detection based on surrounding keys
+    # For now, default to 'task' which is most common
+    return "task"
+
+
+def _format_module_documentation(name: str, doc) -> str:
+    """Format module documentation as Markdown."""
+    lines = [f"**{name}** (module)"]
+
+    if doc.short_description:
+        lines.append("")
+        lines.append(doc.short_description)
+
+    if doc.description:
+        lines.append("")
+        lines.append(doc.description)
+
+    if doc.options:
+        lines.append("")
+        lines.append("**Options:**")
+        for opt_name, opt in doc.options.items():
+            req = " *(required)*" if opt.required else ""
+            lines.append(f"- `{opt_name}`{req}: {opt.description or ''}")
+
+    return "\n".join(lines)
+#+end_src
+
+***** tests/providers/test_hover.py
+
+#+begin_src python :tangle tests/providers/test_hover.py :mkdirp t
+"""Tests for hover provider."""
+
+import pytest
+from unittest.mock import AsyncMock, MagicMock
+
+from lsprotocol import types
+
+from ansible_ls.providers.hover import provide_hover, _determine_context
+
+
+class TestProvideHover:
+    """Test hover provider functionality."""
+
+    @pytest.fixture
+    def mock_server(self):
+        """Create a mock LanguageServer."""
+        server = MagicMock()
+        document = MagicMock()
+        document.source = """
+- name: Test play
+  hosts: all
+  tasks:
+    - name: Test task
+      become: yes
+      debug:
+        msg: "hello"
+"""
+        server.workspace.get_document.return_value = document
+        return server
+
+    @pytest.fixture
+    def mock_workspace_manager(self):
+        """Create a mock WorkspaceManager."""
+        manager = MagicMock()
+        manager.get_context.return_value = None
+        return manager
+
+    @pytest.mark.asyncio
+    async def test_hover_on_keyword(self, mock_server, mock_workspace_manager):
+        """Test hover provides documentation for keywords."""
+        params = types.HoverParams(
+            text_document=types.TextDocumentIdentifier(uri="file:///test.yml"),
+            position=types.Position(line=5, character=6),  # 'become'
+        )
+
+        result = await provide_hover(mock_server, params, mock_workspace_manager)
+
+        # Should return hover info for 'become' keyword
+        # Note: This test may need adjustment based on actual YAML parsing
+        assert result is None or isinstance(result, types.Hover)
+
+
+class TestDetermineContext:
+    """Test context determination from AST path."""
+
+    def test_defaults_to_task(self):
+        """Test that context defaults to 'task'."""
+        path = []
+        context = _determine_context(path)
+        assert context == "task"
+#+end_src
+
+***** Implementation Checklist: Hover
+
+- [ ] Register hover provider with =@server.feature=
+- [ ] Parse YAML and navigate to cursor position
+- [ ] Detect context (play/task/block/role)
+- [ ] Provide keyword documentation
+- [ ] Provide module documentation
+- [ ] Provide option documentation
+- [ ] Write tests with fixture playbooks
+
+**** Simple Providers: Definition
+
+***** src/ansible_ls/providers/definition.py
+
+#+begin_src python :tangle src/ansible_ls/providers/definition.py :mkdirp t
+"""Definition provider for Ansible playbooks.
+
+Port of src/providers/definitionProvider.ts
+"""
+
+from typing import Optional
+from pathlib import Path
+from urllib.parse import urlparse
+
+from lsprotocol import types
+from pygls.server import LanguageServer
+
+from ..services.workspace_manager import WorkspaceManager
+from ..utils.yaml_utils import parse_yaml, get_path_to_position, AncestryBuilder
+
+
+async def provide_definition(
+    server: LanguageServer,
+    params: types.DefinitionParams,
+    workspace_manager: WorkspaceManager,
+) -> Optional[types.Location | list[types.Location]]:
+    """Provide go-to-definition for Ansible symbols.
+
+    Supports:
+    - Role references (roles: section)
+    - Task includes (include_tasks, import_tasks)
+    - Variable file includes (vars_files)
+    - Playbook imports (import_playbook)
+
+    Args:
+        server: The language server instance
+        params: Definition request parameters
+        workspace_manager: Workspace manager for accessing services
+
+    Returns:
+        Location(s) of the definition, or None if not found.
+    """
+    uri = params.text_document.uri
+    document = server.workspace.get_document(uri)
+
+    # Parse YAML and get path to cursor
+    tree = parse_yaml(document.source)
+    path = get_path_to_position(
+        tree,
+        params.position.line,
+        params.position.character,
+    )
+
+    if not path:
+        return None
+
+    # Get the word at cursor position
+    node = path[-1]
+    word = node.text.decode("utf-8").strip().strip("'\"")
+
+    # Determine what kind of reference this is
+    ref_type = _determine_reference_type(path)
+
+    if ref_type == "role":
+        return await _find_role_definition(word, uri, workspace_manager)
+    elif ref_type == "include":
+        return _find_include_definition(word, uri)
+    elif ref_type == "vars_file":
+        return _find_vars_file_definition(word, uri)
+
+    return None
+
+
+def _determine_reference_type(path: list) -> Optional[str]:
+    """Determine what kind of reference the cursor is on.
+
+    Returns 'role', 'include', 'vars_file', or None.
+    """
+    builder = AncestryBuilder(path)
+
+    # Look for key context
+    key = builder.parent("block_mapping").get_string_key()
+
+    if key in ("role", "roles"):
+        return "role"
+    elif key in ("include_tasks", "import_tasks", "include", "import_playbook"):
+        return "include"
+    elif key in ("vars_files", "include_vars"):
+        return "vars_file"
+
+    return None
+
+
+async def _find_role_definition(
+    role_name: str,
+    document_uri: str,
+    workspace_manager: WorkspaceManager,
+) -> Optional[types.Location]:
+    """Find the definition of a role."""
+    parsed = urlparse(document_uri)
+    doc_dir = Path(parsed.path).parent
+
+    # Check common role locations
+    role_paths = [
+        doc_dir / "roles" / role_name / "tasks" / "main.yml",
+        doc_dir / "roles" / role_name / "tasks" / "main.yaml",
+        doc_dir.parent / "roles" / role_name / "tasks" / "main.yml",
+    ]
+
+    for role_path in role_paths:
+        if role_path.exists():
+            return types.Location(
+                uri=role_path.as_uri(),
+                range=types.Range(
+                    start=types.Position(line=0, character=0),
+                    end=types.Position(line=0, character=0),
+                ),
+            )
+
+    return None
+
+
+def _find_include_definition(
+    include_path: str,
+    document_uri: str,
+) -> Optional[types.Location]:
+    """Find the definition of an included file."""
+    parsed = urlparse(document_uri)
+    doc_dir = Path(parsed.path).parent
+
+    # Resolve relative path
+    target_path = doc_dir / include_path
+    if target_path.exists():
+        return types.Location(
+            uri=target_path.as_uri(),
+            range=types.Range(
+                start=types.Position(line=0, character=0),
+                end=types.Position(line=0, character=0),
+            ),
+        )
+
+    return None
+
+
+def _find_vars_file_definition(
+    vars_path: str,
+    document_uri: str,
+) -> Optional[types.Location]:
+    """Find the definition of a vars file."""
+    return _find_include_definition(vars_path, document_uri)
+#+end_src
+
+***** Implementation Checklist: Definition
+
+- [ ] Register definition provider with =@server.feature=
+- [ ] Detect reference type (role, include, vars_file)
+- [ ] Resolve role definitions from roles/ directory
+- [ ] Resolve include definitions (relative paths)
+- [ ] Handle collections paths for role lookups
+- [ ] Write tests with fixture directory structure
+
+**** Complex Providers: Completion
+
+***** src/ansible_ls/providers/completion.py
+
+The completion provider is the most complex (~666 lines in TypeScript). Key challenges:
+- Context detection (play vs task vs block vs role keys)
+- Module option completion with suboptions
+- Collection-aware module name completion
+- Jinja2 variable completion
+
+#+begin_src python :tangle src/ansible_ls/providers/completion.py :mkdirp t
+"""Completion provider for Ansible playbooks.
+
+Port of src/providers/completionProvider.ts
+
+This is the most complex provider, handling:
+- Keyword completion based on context
+- Module name completion (FQCN and short)
+- Module option completion with suboptions
+- Value completion (choices, booleans)
+"""
+
+from typing import Optional
+
+from lsprotocol import types
+from pygls.server import LanguageServer
+
+from ..services.workspace_manager import WorkspaceManager
+from ..services.docs_library import DocsLibrary
+from ..utils.yaml_utils import parse_yaml, get_path_to_position, AncestryBuilder
+from ..utils.ansible_keywords import (
+    PLAY_KEYWORDS,
+    TASK_KEYWORDS,
+    BLOCK_KEYWORDS,
+    ROLE_KEYWORDS,
+    is_task_keyword,
+)
+
+
+async def provide_completion(
+    server: LanguageServer,
+    params: types.CompletionParams,
+    workspace_manager: WorkspaceManager,
+) -> Optional[types.CompletionList]:
+    """Provide completion items at cursor position.
+
+    Args:
+        server: The language server instance
+        params: Completion request parameters
+        workspace_manager: Workspace manager for accessing services
+
+    Returns:
+        CompletionList with items, or None if no completions available.
+    """
+    uri = params.text_document.uri
+    document = server.workspace.get_document(uri)
+
+    # Parse YAML and get path to cursor
+    tree = parse_yaml(document.source)
+    path = get_path_to_position(
+        tree,
+        params.position.line,
+        params.position.character,
+    )
+
+    if not path:
+        return None
+
+    # Determine completion context
+    context = _determine_completion_context(path, document.source, params.position)
+
+    items: list[types.CompletionItem] = []
+
+    if context.type == "play_key":
+        items = _get_keyword_completions(PLAY_KEYWORDS, context.prefix)
+    elif context.type == "task_key":
+        items = _get_keyword_completions(TASK_KEYWORDS, context.prefix)
+        # Also add module completions
+        workspace_context = workspace_manager.get_context(uri)
+        if workspace_context:
+            docs_library = await workspace_context.get_docs_library()
+            items.extend(_get_module_completions(docs_library, context.prefix))
+    elif context.type == "block_key":
+        items = _get_keyword_completions(BLOCK_KEYWORDS, context.prefix)
+    elif context.type == "role_key":
+        items = _get_keyword_completions(ROLE_KEYWORDS, context.prefix)
+    elif context.type == "module_option":
+        workspace_context = workspace_manager.get_context(uri)
+        if workspace_context:
+            docs_library = await workspace_context.get_docs_library()
+            items = await _get_option_completions(
+                docs_library, context.module_name, context.prefix
+            )
+    elif context.type == "value":
+        items = _get_value_completions(context)
+
+    return types.CompletionList(
+        is_incomplete=False,
+        items=items,
+    )
+
+
+class CompletionContext:
+    """Holds information about the completion context."""
+
+    def __init__(self):
+        self.type: str = "unknown"  # play_key, task_key, module_option, value
+        self.prefix: str = ""
+        self.module_name: Optional[str] = None
+        self.option_name: Optional[str] = None
+        self.in_list: bool = False
+
+
+def _determine_completion_context(
+    path: list,
+    source: str,
+    position: types.Position,
+) -> CompletionContext:
+    """Determine what kind of completion is needed.
+
+    Analyzes the AST path and surrounding context to determine:
+    - Are we completing a key or a value?
+    - What level are we at (play, task, block)?
+    - If completing module options, which module?
+    """
+    context = CompletionContext()
+
+    # Get the text on the current line up to cursor
+    lines = source.split("\n")
+    if position.line < len(lines):
+        line = lines[position.line]
+        line_prefix = line[: position.character]
+        context.prefix = line_prefix.lstrip().rstrip(":")
+
+    builder = AncestryBuilder(path)
+
+    # Try to determine context by walking up the tree
+    # This is a simplified version - full implementation needs more cases
+
+    current = builder.get()
+    if current and current.type == "block_mapping":
+        # We're at a mapping level - determine if play, task, or block
+        context.type = _detect_mapping_context(builder)
+    elif current and current.type == "block_sequence":
+        # We're at a list - could be plays, tasks, or handlers
+        parent_key = builder.parent("block_mapping").get_string_key()
+        if parent_key in ("tasks", "pre_tasks", "post_tasks", "handlers"):
+            context.type = "task_key"
+        elif parent_key is None:
+            context.type = "play_key"  # Root level list = plays
+
+    return context
+
+
+def _detect_mapping_context(builder: AncestryBuilder) -> str:
+    """Detect if a mapping is play, task, block, or role level."""
+    # Check for task-specific keys
+    key = builder.get_string_key()
+    if key and is_task_keyword(key):
+        return "module_option"
+
+    # Walk up to find context
+    parent_key = builder.parent("block_mapping").get_string_key()
+    if parent_key in ("tasks", "pre_tasks", "post_tasks", "handlers"):
+        return "task_key"
+    elif parent_key == "block":
+        return "task_key"
+    elif parent_key == "roles":
+        return "role_key"
+
+    return "play_key"
+
+
+def _get_keyword_completions(
+    keywords: dict,
+    prefix: str,
+) -> list[types.CompletionItem]:
+    """Generate completion items for keywords."""
+    items = []
+    for keyword, doc in keywords.items():
+        if prefix and not keyword.startswith(prefix):
+            continue
+
+        # Get documentation text
+        if hasattr(doc, "value"):
+            detail = doc.value[:100] if doc.value else ""
+        else:
+            detail = str(doc)[:100] if doc else ""
+
+        items.append(
+            types.CompletionItem(
+                label=keyword,
+                kind=types.CompletionItemKind.Keyword,
+                detail=detail,
+                insert_text=f"{keyword}: ",
+                insert_text_format=types.InsertTextFormat.PlainText,
+            )
+        )
+    return items
+
+
+def _get_module_completions(
+    docs_library: DocsLibrary,
+    prefix: str,
+) -> list[types.CompletionItem]:
+    """Generate completion items for module names."""
+    items = []
+    modules = docs_library.find_modules(prefix)
+
+    for module in modules:
+        doc = module.documentation
+        detail = doc.short_description if doc else ""
+
+        items.append(
+            types.CompletionItem(
+                label=module.fqcn,
+                kind=types.CompletionItemKind.Module,
+                detail=detail,
+                insert_text=f"{module.fqcn}:\n  ",
+                insert_text_format=types.InsertTextFormat.PlainText,
+                filter_text=module.name,  # Allow matching on short name
+            )
+        )
+    return items
+
+
+async def _get_option_completions(
+    docs_library: DocsLibrary,
+    module_name: Optional[str],
+    prefix: str,
+) -> list[types.CompletionItem]:
+    """Generate completion items for module options."""
+    if not module_name:
+        return []
+
+    doc = await docs_library.get_module_documentation(module_name)
+    if not doc or not doc.options:
+        return []
+
+    items = []
+    for name, option in doc.options.items():
+        if prefix and not name.startswith(prefix):
+            continue
+
+        detail = option.description or ""
+        if option.required:
+            detail = f"(required) {detail}"
+
+        items.append(
+            types.CompletionItem(
+                label=name,
+                kind=types.CompletionItemKind.Property,
+                detail=detail[:100],
+                insert_text=f"{name}: ",
+                insert_text_format=types.InsertTextFormat.PlainText,
+            )
+        )
+    return items
+
+
+def _get_value_completions(context: CompletionContext) -> list[types.CompletionItem]:
+    """Generate completion items for values (booleans, choices)."""
+    items = []
+
+    # Boolean completions (common case)
+    for val in ["true", "false", "yes", "no"]:
+        items.append(
+            types.CompletionItem(
+                label=val,
+                kind=types.CompletionItemKind.Value,
+            )
+        )
+
+    return items
+#+end_src
+
+***** Implementation Checklist: Completion
+
+- [ ] Register completion provider with =@server.feature=
+- [ ] Implement context detection (play/task/block/role/module option)
+- [ ] Implement keyword completion for each context
+- [ ] Implement module name completion (FQCN + short names)
+- [ ] Implement module option completion with suboptions
+- [ ] Implement value completion (booleans, choices)
+- [ ] Handle trigger characters (=:=, =-=)
+- [ ] Implement completion resolve for lazy documentation
+- [ ] Write extensive tests with fixture playbooks
+
+*** Appendix
+:PROPERTIES:
+:CREATED:  [2026-01-29 Wed]
+:END:
 
 **** YAML AST Navigation
 
@@ -1875,7 +3566,7 @@ class TestYamlParsing:
 :PROPERTIES:
 :ID:       042d8753-3757-48a6-b5a0-251196171795
 :END:
-Research phase complete. Ready to proceed with implementation.
+Research phase complete. Code skeletons documented. Ready for implementation.
 
 1. [X] Initialize Python project with =uv init=
 2. [X] Research tree-sitter for YAML AST (see Tier 2 findings)
@@ -1886,7 +3577,16 @@ Research phase complete. Ready to proceed with implementation.
 7. [X] Port =utils/ansible.ts= keyword definitions (see [[*Ansible Keywords Port][Ansible Keywords Port]])
 8. [X] Port =interfaces/module.ts= to dataclasses (see =src/ansible_ls/models/module.py=)
 9. [X] Port =utils/yaml.ts= using tree-sitter-yaml with comprehensive tests (see [[*AncestryBuilder Wrapper Node Fix][AncestryBuilder Wrapper Node Fix]])
-10. [ ] Incrementally port services and providers
+10. [X] Document detailed porting notes with code skeletons (see [[*Service Porting Guide][Service Porting Guide]] and [[*Provider Porting Guide][Provider Porting Guide]])
+11. [ ] Tangle service skeletons and implement (=C-c C-v t= in Emacs)
+    - [ ] =SettingsManager= - settings caching and LSP config
+    - [ ] =WorkspaceManager= - multi-folder context
+    - [ ] =DocsLibrary= - module documentation cache
+    - [ ] =ValidationManager= - ansible-lint integration
+12. [ ] Tangle provider skeletons and implement
+    - [ ] =HoverProvider= - keyword and module docs on hover
+    - [ ] =DefinitionProvider= - go-to-definition for roles/includes
+    - [ ] =CompletionProvider= - context-aware completions
 
 ***** Running Tests
 After tangling, set up environment and run tests:
@@ -1902,11 +3602,12 @@ cachedir: .pytest_cache
 rootdir: /home/chad/code/ansible-language-server
 configfile: pyproject.toml
 plugins: asyncio-1.3.0
-collected 32 items
+collected 59 items
 
+tests/utils/test_ansible_dynamic.py: 16 passed
 tests/utils/test_ansible_keywords.py: 23 passed
 tests/utils/test_yaml_utils.py: 9 passed
 
-============================== 32 passed in 0.08s ==============================
+============================== 59 passed in 0.33s ==============================
 #+end_example
 
