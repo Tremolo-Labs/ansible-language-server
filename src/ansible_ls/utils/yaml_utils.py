@@ -67,7 +67,6 @@ def get_path_to_position(tree, line: int, column: int) -> list:
     walk(root)
     return path
 
-
 class AncestryBuilder:
     """
     Navigate YAML AST ancestry.
