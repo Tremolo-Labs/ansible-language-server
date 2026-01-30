@@ -71,6 +71,13 @@
     - [ ] [[id:definition-provider][DefinitionProvider]] - go-to-definition for roles/includes
     - [ ] [[id:completion-provider][CompletionProvider]] - context-aware completions
 
+*** Future: Custom Tree-Sitter Grammar
+12. [ ] [[id:65a482d4-c8c4-493b-ad0f-bf467a2cffbc][Custom tree-sitter-ansible grammar]]
+    - [ ] Keyword extraction from Ansible source
+    - [ ] Grammar composition (YAML + Jinja2 + Ansible)
+    - [ ] CI matrix build for multiple Ansible versions
+    - [ ] Python bindings generation
+
 *** Completion Provider Checklist
 - [ ] Register completion provider with =@server.feature=
 - [ ] Implement context detection (play/task/block/role/module option)
@@ -92,6 +99,7 @@
 |    4 | Complex Services | TODO   | executionEnvironment.ts (536 lines)              |
 |    5 | Providers        | TODO   | completionProvider.ts (666 lines) \m/            |
 |    6 | LSP Core         | TODO   | ansibleLanguageService.ts, server.ts             |
+|    7 | Custom Grammar   | DESIGN | [[id:65a482d4-c8c4-493b-ad0f-bf467a2cffbc][tree-sitter-ansible]] (YAML+Jinja2+keywords)       |
 
 ** Running Tests
 #+begin_src bash :results output :wrap example

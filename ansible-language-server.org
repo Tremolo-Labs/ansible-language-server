@@ -439,7 +439,657 @@ See [[file:src/ansible_ls/utils/ansible_dynamic.py][ansible_dynamic.py]] for the
 
   Once it's working, the trick shot is to build the grammar from latest sources in CI off a matrix and build versioned releases and all that. Trees should work ok for that, they're flexible. Schema changes are unlikely within major versions of the target languages, and worth the maintenance.
 
-  But first, design documentation with tangled unit tests and integration tests where applicable ("how") under each "what" subtree, organized by "why", in org format. Put project management data in the 
+**** Why: Semantic Understanding Beyond YAML
+
+The current approach treats Ansible files as generic YAML with keyword lookups. A custom grammar enables:
+
+1. *Semantic node types* - =ansible_task=, =ansible_play=, =jinja_expression= instead of =block_mapping=
+2. *Cross-language parsing* - Jinja2 expressions embedded in YAML strings
+3. *Reference resolution* - Link =role: foo= to =roles/foo/tasks/main.yml=
+4. *Type-aware validation* - Know that =hosts:= expects a pattern, not arbitrary YAML
+
+#+begin_src dot :file images/grammar-composition.png :cmdline -Kdot -Tpng :exports results
+digraph grammar {
+    rankdir=TB;
+    node [shape=box, style="rounded,filled", fontname="Helvetica"];
+
+    subgraph cluster_base {
+        label="Base Grammars";
+        yaml [label="tree-sitter-yaml", fillcolor="#e3f2fd"];
+        jinja [label="tree-sitter-jinja2", fillcolor="#fff3e0"];
+    }
+
+    subgraph cluster_ansible {
+        label="Composite Grammar";
+        style=filled;
+        color="#f5f5f5";
+
+        playbook [label="playbook", fillcolor="#e8f5e9"];
+        play [label="play", fillcolor="#e8f5e9"];
+        task [label="task", fillcolor="#e8f5e9"];
+        block [label="block", fillcolor="#e8f5e9"];
+        role_ref [label="role_reference", fillcolor="#e8f5e9"];
+        template [label="jinja_template", fillcolor="#fce4ec"];
+        var_ref [label="variable_reference", fillcolor="#fce4ec"];
+    }
+
+    yaml -> playbook [label="extends"];
+    yaml -> play;
+    yaml -> task;
+    yaml -> block;
+    jinja -> template [label="embeds"];
+    jinja -> var_ref;
+
+    playbook -> play [label="contains"];
+    play -> task;
+    play -> block;
+    play -> role_ref;
+    block -> task;
+    task -> template [style=dashed, label="string values"];
+}
+#+end_src
+
+#+RESULTS:
+[[file:images/grammar-composition.png]]
+
+**** What: Grammar Structure
+
+The grammar extends YAML with Ansible-specific rules. Keywords are injected at build time from Ansible's =fattributes= API.
+
+***** Play Detection
+
+A play is a mapping at the root list level containing =hosts:= (required) plus optional play keywords.
+
+#+begin_src javascript
+// grammar.js (tree-sitter DSL)
+play: $ => seq(
+  $.block_mapping,
+  field('hosts', $.hosts_directive),
+  repeat(choice(
+    $.play_keyword,
+    $.tasks_section,
+    $.handlers_section,
+    $.roles_section,
+    $.vars_section,
+  ))
+),
+
+hosts_directive: $ => seq(
+  'hosts',
+  ':',
+  $.host_pattern
+),
+
+// Injected from Python: Play.fattributes.keys()
+play_keyword: $ => choice(
+  'name', 'gather_facts', 'become', 'become_user',
+  'connection', 'environment', 'serial', 'strategy',
+  // ... generated from Ansible source
+),
+#+end_src
+
+***** Task Detection
+
+A task is a mapping inside =tasks:=, =handlers:=, =pre_tasks:=, or =post_tasks:= containing exactly one module invocation plus optional task keywords.
+
+#+begin_src javascript
+task: $ => seq(
+  $.block_mapping,
+  optional(field('name', $.name_directive)),
+  field('module', $.module_invocation),
+  repeat($.task_keyword),
+),
+
+module_invocation: $ => seq(
+  field('module_name', $.module_fqcn),
+  ':',
+  optional($.module_args),
+),
+
+module_fqcn: $ => choice(
+  // Short name: debug, copy, file
+  $.identifier,
+  // FQCN: ansible.builtin.debug
+  seq($.namespace, '.', $.collection, '.', $.module_name)
+),
+
+// Injected from Python: Task.fattributes.keys()
+task_keyword: $ => choice(
+  'name', 'register', 'when', 'loop', 'with_items',
+  'notify', 'tags', 'become', 'delegate_to',
+  // ... generated from Ansible source
+),
+#+end_src
+
+***** Jinja2 Embedding
+
+Jinja2 expressions appear in string values, delimited by ={{ }}= (expressions) or ={%  %}= (statements).
+
+#+begin_src javascript
+jinja_expression: $ => seq(
+  '{{',
+  $.jinja_content,
+  '}}'
+),
+
+jinja_content: $ => choice(
+  $.variable_reference,
+  $.filter_chain,
+  $.conditional,
+  $.function_call,
+),
+
+variable_reference: $ => seq(
+  $.identifier,
+  repeat(seq('.', $.identifier))  // hostvars.inventory_hostname
+),
+
+filter_chain: $ => seq(
+  $._jinja_value,
+  repeat1(seq('|', $.filter_name, optional($.filter_args)))
+),
+#+end_src
+
+**** How: Build Pipeline
+
+#+begin_src dot :file images/build-pipeline.png :cmdline -Kdot -Tpng :exports results
+digraph pipeline {
+    rankdir=LR;
+    node [shape=box, style="rounded,filled", fontname="Helvetica"];
+
+    subgraph cluster_inputs {
+        label="Inputs";
+        ansible [label="Ansible Source\n(fattributes)", fillcolor="#e3f2fd"];
+        yaml_grammar [label="tree-sitter-yaml\ngrammar.js", fillcolor="#e3f2fd"];
+        jinja_grammar [label="tree-sitter-jinja2\ngrammar.js", fillcolor="#e3f2fd"];
+    }
+
+    subgraph cluster_generate {
+        label="Generation (Python)";
+        extract [label="extract_keywords.py", fillcolor="#fff3e0"];
+        compose [label="compose_grammar.py", fillcolor="#fff3e0"];
+    }
+
+    subgraph cluster_build {
+        label="Build (Node.js)";
+        treesitter [label="tree-sitter generate", fillcolor="#e8f5e9"];
+        compile [label="tree-sitter build", fillcolor="#e8f5e9"];
+    }
+
+    subgraph cluster_outputs {
+        label="Outputs";
+        parser_c [label="parser.c", fillcolor="#fce4ec"];
+        bindings [label="Python bindings\n(.so/.pyd)", fillcolor="#fce4ec"];
+    }
+
+    ansible -> extract;
+    extract -> compose [label="keywords.json"];
+    yaml_grammar -> compose;
+    jinja_grammar -> compose;
+    compose -> treesitter [label="grammar.js"];
+    treesitter -> parser_c;
+    parser_c -> compile;
+    compile -> bindings;
+}
+#+end_src
+
+#+RESULTS:
+[[file:images/build-pipeline.png]]
+
+***** Keyword Extraction Script
+
+#+begin_src python :tangle tools/extract_keywords.py :mkdirp t
+"""Extract Ansible keywords from source for grammar generation.
+
+This script imports Ansible's internal fattributes API and exports
+keyword definitions as JSON for the grammar generator.
+"""
+
+import json
+import sys
+from pathlib import Path
+
+
+def extract_keywords() -> dict:
+    """Extract keywords from Ansible playbook classes."""
+    keywords = {
+        "play": [],
+        "task": [],
+        "block": [],
+        "role": [],
+    }
+
+    try:
+        from ansible.playbook.play import Play
+        from ansible.playbook.task import Task
+        from ansible.playbook.block import Block
+        from ansible.playbook.role.definition import RoleDefinition
+
+        keywords["play"] = list(Play.fattributes.keys())
+        keywords["task"] = list(Task.fattributes.keys())
+        keywords["block"] = list(Block.fattributes.keys())
+        keywords["role"] = list(RoleDefinition.fattributes.keys())
+
+        # Add metadata
+        for context, cls in [
+            ("play", Play),
+            ("task", Task),
+            ("block", Block),
+            ("role", RoleDefinition),
+        ]:
+            keywords[f"{context}_meta"] = {
+                name: {
+                    "isa": getattr(attr, "isa", None),
+                    "required": getattr(attr, "required", False),
+                    "default": repr(getattr(attr, "default", None)),
+                }
+                for name, attr in cls.fattributes.items()
+            }
+
+    except ImportError as e:
+        print(f"Warning: Could not import Ansible: {e}", file=sys.stderr)
+        # Fallback to static keywords from ansible_keywords.py
+        from ansible_ls.utils.ansible_keywords import (
+            PLAY_KEYWORDS,
+            TASK_KEYWORDS,
+            BLOCK_KEYWORDS,
+            ROLE_KEYWORDS,
+        )
+
+        keywords["play"] = list(PLAY_KEYWORDS.keys())
+        keywords["task"] = list(TASK_KEYWORDS.keys())
+        keywords["block"] = list(BLOCK_KEYWORDS.keys())
+        keywords["role"] = list(ROLE_KEYWORDS.keys())
+
+    return keywords
+
+
+def main():
+    """Output keywords as JSON."""
+    keywords = extract_keywords()
+    output = Path("build/keywords.json")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(keywords, indent=2))
+    print(f"Wrote {len(keywords['task'])} task keywords to {output}")
+
+
+if __name__ == "__main__":
+    main()
+#+end_src
+
+***** Grammar Composition Script
+
+#+begin_src python :tangle tools/compose_grammar.py :mkdirp t
+"""Compose tree-sitter grammar from base grammars and keywords.
+
+Merges tree-sitter-yaml and tree-sitter-jinja2 grammars with
+Ansible-specific rules and injected keywords.
+"""
+
+import json
+from pathlib import Path
+from string import Template
+
+
+GRAMMAR_TEMPLATE = Template('''
+/**
+ * tree-sitter-ansible grammar
+ * Auto-generated from Ansible ${ansible_version}
+ */
+
+module.exports = grammar(require('tree-sitter-yaml/grammar'), {
+  name: 'ansible',
+
+  externals: ($, original) => original.concat([
+    // Jinja2 delimiters
+    $._jinja_start,
+    $._jinja_end,
+  ]),
+
+  rules: {
+    // Ansible-specific rules
+    playbook: $ => repeat($.play),
+
+    play: $ => seq(
+      $.block_mapping,
+      // Must have hosts
+      alias($.hosts_directive, $.play_hosts),
+    ),
+
+    hosts_directive: $ => seq(
+      'hosts', ':', $._flow_value
+    ),
+
+    task: $ => prec.right(seq(
+      $.block_mapping_pair,
+      // Module invocation (the non-keyword key)
+      field('module', $.module_invocation),
+    )),
+
+    module_invocation: $ => seq(
+      field('name', $.module_name),
+      ':',
+      optional($._block_node),
+    ),
+
+    module_name: $ => choice(
+      // Short name
+      /[a-z_][a-z0-9_]*/,
+      // FQCN
+      /[a-z_][a-z0-9_]*\\.[a-z_][a-z0-9_]*\\.[a-z_][a-z0-9_]*/,
+    ),
+
+    // Jinja2 expressions in strings
+    jinja_expression: $ => seq(
+      '{{',
+      repeat(choice(
+        $.variable_ref,
+        $.filter_chain,
+        /[^}]+/,
+      )),
+      '}}',
+    ),
+
+    variable_ref: $ => /[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*/,
+
+    filter_chain: $ => seq(
+      $._jinja_value,
+      repeat1(seq('|', $.filter_name)),
+    ),
+
+    filter_name: $ => /[a-z_][a-z0-9_]*/,
+
+    // Keyword choices (injected)
+    play_keyword: $ => choice(${play_keywords}),
+    task_keyword: $ => choice(${task_keywords}),
+    block_keyword: $ => choice(${block_keywords}),
+    role_keyword: $ => choice(${role_keywords}),
+  },
+});
+''')
+
+
+def compose_grammar(keywords_path: Path) -> str:
+    """Generate grammar.js from keywords."""
+    keywords = json.loads(keywords_path.read_text())
+
+    def quote_keywords(kw_list: list) -> str:
+        return ", ".join(f"'{kw}'" for kw in sorted(kw_list))
+
+    return GRAMMAR_TEMPLATE.substitute(
+        ansible_version="2.16+",  # TODO: detect dynamically
+        play_keywords=quote_keywords(keywords["play"]),
+        task_keywords=quote_keywords(keywords["task"]),
+        block_keywords=quote_keywords(keywords["block"]),
+        role_keywords=quote_keywords(keywords["role"]),
+    )
+
+
+def main():
+    """Generate grammar.js."""
+    keywords_path = Path("build/keywords.json")
+    if not keywords_path.exists():
+        print("Run extract_keywords.py first")
+        return 1
+
+    grammar = compose_grammar(keywords_path)
+    output = Path("tree-sitter-ansible/grammar.js")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(grammar)
+    print(f"Wrote grammar to {output}")
+
+
+if __name__ == "__main__":
+    main()
+#+end_src
+
+**** Tests: Grammar Validation
+
+***** Unit Tests for Keyword Extraction
+
+#+begin_src python :tangle tests/tools/test_extract_keywords.py :mkdirp t
+"""Tests for keyword extraction."""
+
+import pytest
+
+
+class TestKeywordExtraction:
+    """Test keyword extraction from Ansible source."""
+
+    def test_play_keywords_include_hosts(self):
+        """Hosts is a required play keyword."""
+        from tools.extract_keywords import extract_keywords
+
+        keywords = extract_keywords()
+        assert "hosts" in keywords["play"]
+
+    def test_task_keywords_include_name(self):
+        """Name is a common task keyword."""
+        from tools.extract_keywords import extract_keywords
+
+        keywords = extract_keywords()
+        assert "name" in keywords["task"]
+
+    def test_task_keywords_include_register(self):
+        """Register is used to capture task output."""
+        from tools.extract_keywords import extract_keywords
+
+        keywords = extract_keywords()
+        assert "register" in keywords["task"]
+
+    def test_block_keywords_include_rescue(self):
+        """Rescue is block-specific for error handling."""
+        from tools.extract_keywords import extract_keywords
+
+        keywords = extract_keywords()
+        assert "rescue" in keywords["block"]
+
+    def test_fallback_when_ansible_unavailable(self, monkeypatch):
+        """Should use static fallback if Ansible import fails."""
+        import sys
+
+        # Block ansible imports
+        monkeypatch.setitem(sys.modules, "ansible", None)
+        monkeypatch.setitem(sys.modules, "ansible.playbook", None)
+
+        from tools.extract_keywords import extract_keywords
+
+        keywords = extract_keywords()
+        # Should still have keywords from static fallback
+        assert len(keywords["task"]) > 0
+#+end_src
+
+***** Integration Tests for Grammar Parsing
+
+#+begin_src python :tangle tests/tools/test_grammar_parsing.py :mkdirp t
+"""Integration tests for the composed grammar.
+
+These tests require the grammar to be built first:
+    python tools/extract_keywords.py
+    python tools/compose_grammar.py
+    cd tree-sitter-ansible && npx tree-sitter generate && npx tree-sitter build
+"""
+
+import pytest
+from pathlib import Path
+
+# Skip all tests if grammar not built
+pytestmark = pytest.mark.skipif(
+    not Path("tree-sitter-ansible/ansible.so").exists(),
+    reason="Grammar not built. Run build pipeline first.",
+)
+
+
+@pytest.fixture
+def parser():
+    """Load the Ansible grammar parser."""
+    from tree_sitter import Language, Parser
+
+    lang = Language("tree-sitter-ansible/ansible.so", "ansible")
+    parser = Parser()
+    parser.set_language(lang)
+    return parser
+
+
+class TestPlayParsing:
+    """Test play-level parsing."""
+
+    def test_simple_play(self, parser):
+        """Parse a minimal play."""
+        source = b"""
+- hosts: all
+  tasks:
+    - debug: msg="hello"
+"""
+        tree = parser.parse(source)
+        assert tree.root_node.type == "playbook"
+        assert not tree.root_node.has_error
+
+    def test_play_with_keywords(self, parser):
+        """Parse play with common keywords."""
+        source = b"""
+- name: Configure servers
+  hosts: webservers
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Install packages
+      apt: name=nginx state=present
+"""
+        tree = parser.parse(source)
+        assert not tree.root_node.has_error
+
+        # Find the play node
+        play = tree.root_node.children[0]
+        assert play.type == "play"
+
+
+class TestTaskParsing:
+    """Test task-level parsing."""
+
+    def test_module_with_fqcn(self, parser):
+        """Parse task with fully-qualified module name."""
+        source = b"""
+- hosts: all
+  tasks:
+    - ansible.builtin.debug:
+        msg: "Using FQCN"
+"""
+        tree = parser.parse(source)
+        assert not tree.root_node.has_error
+
+    def test_task_with_loop(self, parser):
+        """Parse task with loop construct."""
+        source = b"""
+- hosts: all
+  tasks:
+    - name: Install packages
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - nginx
+        - postgresql
+"""
+        tree = parser.parse(source)
+        assert not tree.root_node.has_error
+
+
+class TestJinjaParsing:
+    """Test Jinja2 expression parsing."""
+
+    def test_simple_variable(self, parser):
+        """Parse Jinja variable reference."""
+        source = b"""
+- hosts: all
+  tasks:
+    - debug: msg="{{ ansible_hostname }}"
+"""
+        tree = parser.parse(source)
+        assert not tree.root_node.has_error
+
+    def test_filter_chain(self, parser):
+        """Parse Jinja filter chain."""
+        source = b"""
+- hosts: all
+  tasks:
+    - debug: msg="{{ items | join(', ') | upper }}"
+"""
+        tree = parser.parse(source)
+        assert not tree.root_node.has_error
+#+end_src
+
+**** CI/CD: Multi-Version Matrix
+
+#+begin_src yaml :tangle .github/workflows/grammar-build.yml :mkdirp t
+name: Build Grammar
+
+on:
+  push:
+    paths:
+      - 'tools/extract_keywords.py'
+      - 'tools/compose_grammar.py'
+      - '.github/workflows/grammar-build.yml'
+  schedule:
+    # Weekly rebuild to catch new Ansible releases
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ansible-version: ['2.14', '2.15', '2.16', '2.17']
+        python-version: ['3.10', '3.11', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Ansible
+        run: pip install "ansible-core>=${{ matrix.ansible-version }},<${{ matrix.ansible-version }}.99"
+
+      - name: Install tree-sitter CLI
+        run: npm install -g tree-sitter-cli
+
+      - name: Extract keywords
+        run: python tools/extract_keywords.py
+
+      - name: Compose grammar
+        run: python tools/compose_grammar.py
+
+      - name: Generate parser
+        working-directory: tree-sitter-ansible
+        run: tree-sitter generate
+
+      - name: Build parser
+        working-directory: tree-sitter-ansible
+        run: tree-sitter build
+
+      - name: Run tests
+        run: pytest tests/tools/ -v
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: grammar-ansible-${{ matrix.ansible-version }}-py${{ matrix.python-version }}
+          path: |
+            tree-sitter-ansible/src/
+            tree-sitter-ansible/*.so
+            tree-sitter-ansible/*.dylib
+            build/keywords.json
+#+end_src
+
 *** Data Models
 :PROPERTIES:
 :ID:       data-models
