@@ -15,9 +15,9 @@
 | [[file:src/ansible_ls/utils/ansible_keywords.py][ansible_keywords.py]]   | ✅ DONE | ~670  | [[id:ansible-keywords][Ansible Keywords]]          |
 | [[file:src/ansible_ls/utils/ansible_dynamic.py][ansible_dynamic.py]]    | ✅ DONE | ~260  | [[id:ansible-keywords][Ansible Keywords]]          |
 | [[file:src/ansible_ls/utils/yaml_utils.py][yaml_utils.py]]         | ✅ DONE | ~180  | [[id:yaml-parsing][YAML Parsing]]              |
-| docsParser.py         | TODO    | ~200  | [[id:documentation-library][Documentation Library]]     |
-| docsFinder.py         | TODO    | ~150  | [[id:documentation-library][Documentation Library]]     |
-| commandRunner.py      | TODO    | ~100  | [[id:external-tool-integration][External Tool Integration]] |
+| docsParser.py         | TODO    | ~200  | [[id:docs-library][Documentation Library]]     |
+| docsFinder.py         | TODO    | ~150  | [[id:docs-library][Documentation Library]]     |
+| commandRunner.py      | TODO    | ~100  | [[id:external-tools][External Tool Integration]] |
 |-----------------------+---------+-------+---------------------------|
 | *Models*                |         |       |                           |
 | [[file:src/ansible_ls/models/module.py][module.py]]             | ✅ DONE | ~70   | [[id:module-metadata][Module Metadata]]           |
@@ -26,7 +26,7 @@
 | *Services*              |         |       |                           |
 | settings_manager.py   | TODO    | ~150  | [[id:settings-service][Settings Service]]          |
 | workspace_manager.py  | TODO    | ~240  | [[id:workspace-service][Workspace Service]]         |
-| docs_library.py       | TODO    | ~275  | [[id:documentation-library][Documentation Library]]     |
+| docs_library.py       | TODO    | ~275  | [[id:docs-library][Documentation Library]]     |
 | validation_manager.py | TODO    | ~180  | [[id:validation-service][Validation Service]]        |
 | ansible_lint.py       | TODO    | ~200  | [[id:validation-service][Validation Service]]        |
 | execution_env.py      | TODO    | ~536  | [[id:container-management][Container Management]]      |
@@ -40,6 +40,10 @@
 |-----------------------+---------+-------+---------------------------|
 | *Server*                |         |       |                           |
 | [[file:src/ansible_ls/server.py][server.py]]             | ✅ DONE | ~15   | [[id:server-entry-point][Server Entry Point]]        |
+|-----------------------+---------+-------+---------------------------|
+| *Grammar (Future)*      |         |       |                           |
+| [[file:tools/extract_keywords.py][extract_keywords.py]]   | DESIGN  | ~80   | [[id:65a482d4-c8c4-493b-ad0f-bf467a2cffbc][Custom Grammar]]            |
+| [[file:tools/compose_grammar.py][compose_grammar.py]]    | DESIGN  | ~80   | [[id:65a482d4-c8c4-493b-ad0f-bf467a2cffbc][Custom Grammar]]            |
 
 *Tests:* 59 passing (27 dynamic keyword tests, 23 static keyword tests, 9 YAML utils tests)
 
@@ -63,7 +67,7 @@
 10. [ ] Implement services
     - [ ] [[id:settings-service][SettingsManager]] - settings caching and LSP config
     - [ ] [[id:workspace-service][WorkspaceManager]] - multi-folder context
-    - [ ] [[id:documentation-library][DocsLibrary]] - module documentation cache
+    - [ ] [[id:docs-library][DocsLibrary]] - module documentation cache
     - [ ] [[id:validation-service][ValidationManager]] - ansible-lint integration
 
 11. [ ] Tangle and implement providers
