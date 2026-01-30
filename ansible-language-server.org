@@ -20,77 +20,61 @@ The Python port of ansible-language-server aims to:
 
 The server follows the standard Language Server Protocol architecture, built on [[https://github.com/openlawlibrary/pygls][pygls]]. For TypeScript codebase structure, see [[id:typescript-overview][TypeScript Codebase Overview]].
 
-#+begin_src dot :file images/architecture.png :cmdline -Kdot -Tpng :exports results
-digraph architecture {
-    rankdir=TB;
-    node [shape=box, style="rounded,filled", fontname="Helvetica"];
-    edge [fontname="Helvetica", fontsize=10];
+#+begin_src plantuml :file images/architecture.png :exports results
+@startuml
+!theme plain
+skinparam packageStyle rectangle
+skinparam componentStyle rectangle
 
-    subgraph cluster_client {
-        label="Editor";
-        style=dashed;
-        color=gray;
-        client [label="VS Code / Emacs / Neovim", fillcolor="#e3f2fd"];
-    }
-
-    subgraph cluster_server {
-        label="Language Server";
-        style=filled;
-        color="#f5f5f5";
-
-        pygls [label="pygls LanguageServer\n(JSON-RPC handler)", fillcolor="#fff3e0"];
-
-        subgraph cluster_providers {
-            label="Providers";
-            style=filled;
-            color="#fafafa";
-            hover [label="HoverProvider", fillcolor="#e8f5e9", href="id:hover-provider"];
-            completion [label="CompletionProvider", fillcolor="#e8f5e9", href="id:completion-provider"];
-            definition [label="DefinitionProvider", fillcolor="#e8f5e9", href="id:definition-provider"];
-        }
-
-        subgraph cluster_services {
-            label="Services (per workspace)";
-            style=filled;
-            color="#fafafa";
-            settings [label="SettingsManager", fillcolor="#fce4ec", href="id:settings-service"];
-            workspace [label="WorkspaceManager", fillcolor="#fce4ec", href="id:workspace-service"];
-            docs [label="DocsLibrary", fillcolor="#fce4ec", href="id:docs-library"];
-            validation [label="ValidationManager", fillcolor="#fce4ec", href="id:validation-service"];
-            execenv [label="ExecutionEnvironment", fillcolor="#fce4ec", href="id:container-management"];
-        }
-
-        subgraph cluster_utils {
-            label="Utilities";
-            style=filled;
-            color="#fafafa";
-            yaml [label="yaml_utils\n(tree-sitter)", fillcolor="#f3e5f5", href="id:yaml-parsing"];
-            keywords [label="ansible_keywords\n(hybrid)", fillcolor="#f3e5f5", href="id:ansible-keywords"];
-        }
-    }
-
-    client -> pygls [label="LSP\n(stdio/TCP)", style=bold];
-    pygls -> hover [label="textDocument/hover"];
-    pygls -> completion [label="textDocument/completion"];
-    pygls -> definition [label="textDocument/definition"];
-
-    hover -> docs;
-    hover -> yaml;
-    hover -> keywords;
-    completion -> docs;
-    completion -> yaml;
-    completion -> keywords;
-    definition -> yaml;
-    definition -> workspace;
-
-    settings -> workspace [style=dashed];
-    workspace -> docs;
-    workspace -> validation;
-    workspace -> execenv;
-
-    docs -> keywords [style=dotted];
-    validation -> execenv [style=dotted, label="optional"];
+package "Editor" <<Cloud>> {
+  [VS Code / Emacs / Neovim] as client #e3f2fd
 }
+
+package "Language Server" {
+  [pygls LanguageServer\n(JSON-RPC handler)] as pygls #fff3e0
+
+  package "Providers" {
+    [[[id:hover-provider][HoverProvider]]] as hover #e8f5e9
+    [[[id:completion-provider][CompletionProvider]]] as completion #e8f5e9
+    [[[id:definition-provider][DefinitionProvider]]] as definition #e8f5e9
+  }
+
+  package "Services (per workspace)" {
+    [[[id:settings-service][SettingsManager]]] as settings #fce4ec
+    [[[id:workspace-service][WorkspaceManager]]] as workspace #fce4ec
+    [[[id:docs-library][DocsLibrary]]] as docs #fce4ec
+    [[[id:validation-service][ValidationManager]]] as validation #fce4ec
+    [[[id:container-management][ExecutionEnvironment]]] as execenv #fce4ec
+  }
+
+  package "Utilities" {
+    [[[id:yaml-parsing][yaml_utils\n(tree-sitter)]]] as yaml #f3e5f5
+    [[[id:ansible-keywords][ansible_keywords\n(hybrid)]]] as keywords #f3e5f5
+  }
+}
+
+client -down-> pygls : LSP\n(stdio/TCP)
+pygls -down-> hover : textDocument/hover
+pygls -down-> completion : textDocument/completion
+pygls -down-> definition : textDocument/definition
+
+hover -down-> docs
+hover -down-> yaml
+hover -down-> keywords
+completion -down-> docs
+completion -down-> yaml
+completion -down-> keywords
+definition -down-> yaml
+definition -down-> workspace
+
+settings .down.> workspace
+workspace -down-> docs
+workspace -down-> validation
+workspace -down-> execenv
+
+docs ..> keywords
+validation ..> execenv : optional
+@enduml
 #+end_src
 
 #+RESULTS:
@@ -98,45 +82,42 @@ digraph architecture {
 
 **** Data Flow
 
-#+begin_src dot :file images/dataflow.png :cmdline -Kdot -Tpng :exports results
-digraph dataflow {
-    rankdir=LR;
-    node [shape=box, style="rounded,filled", fontname="Helvetica"];
+#+begin_src plantuml :file images/dataflow.png :exports results
+@startuml
+!theme plain
+left to right direction
+skinparam packageStyle rectangle
 
-    subgraph cluster_input {
-        label="Input";
-        doc [label="YAML Document", fillcolor="#e3f2fd"];
-        pos [label="Cursor Position", fillcolor="#e3f2fd"];
-    }
-
-    subgraph cluster_parse {
-        label="Parsing";
-        tree [label="tree-sitter AST", fillcolor="#fff3e0"];
-        path [label="Path to Node", fillcolor="#fff3e0"];
-        ancestry [label="AncestryBuilder", fillcolor="#fff3e0", href="id:ancestry-builder"];
-    }
-
-    subgraph cluster_context {
-        label="Context Detection";
-        ctx [label="play | task | block | role", fillcolor="#e8f5e9"];
-    }
-
-    subgraph cluster_output {
-        label="Output";
-        kw [label="Keyword Docs", fillcolor="#fce4ec"];
-        mod [label="Module Docs", fillcolor="#fce4ec"];
-        comp [label="Completions", fillcolor="#fce4ec"];
-    }
-
-    doc -> tree [label="parse_yaml()"];
-    pos -> path;
-    tree -> path [label="get_path_to_position()"];
-    path -> ancestry;
-    ancestry -> ctx [label="parent().get_string_key()"];
-    ctx -> kw;
-    ctx -> mod;
-    ctx -> comp;
+package "Input" {
+  [YAML Document] as doc #e3f2fd
+  [Cursor Position] as pos #e3f2fd
 }
+
+package "Parsing" {
+  [tree-sitter AST] as tree #fff3e0
+  [Path to Node] as path #fff3e0
+  [[[id:ancestry-builder][AncestryBuilder]]] as ancestry #fff3e0
+}
+
+package "Context Detection" {
+  [play | task | block | role] as ctx #e8f5e9
+}
+
+package "Output" {
+  [Keyword Docs] as kw #fce4ec
+  [Module Docs] as mod #fce4ec
+  [Completions] as comp #fce4ec
+}
+
+doc -right-> tree : parse_yaml()
+pos -right-> path
+tree -right-> path : get_path_to_position()
+path -right-> ancestry
+ancestry -right-> ctx : parent().get_string_key()
+ctx -right-> kw
+ctx -right-> mod
+ctx -right-> comp
+@enduml
 #+end_src
 
 #+RESULTS:
@@ -448,45 +429,40 @@ The current approach treats Ansible files as generic YAML with keyword lookups. 
 3. *Reference resolution* - Link =role: foo= to =roles/foo/tasks/main.yml=
 4. *Type-aware validation* - Know that =hosts:= expects a pattern, not arbitrary YAML
 
-#+begin_src dot :file images/grammar-composition.png :cmdline -Kdot -Tpng :exports results
-digraph grammar {
-    rankdir=TB;
-    node [shape=box, style="rounded,filled", fontname="Helvetica"];
+#+begin_src plantuml :file images/grammar-composition.png :exports results
+@startuml
+!theme plain
+skinparam packageStyle rectangle
 
-    subgraph cluster_base {
-        label="Base Grammars";
-        yaml [label="tree-sitter-yaml", fillcolor="#e3f2fd"];
-        jinja [label="tree-sitter-jinja2", fillcolor="#fff3e0"];
-    }
-
-    subgraph cluster_ansible {
-        label="Composite Grammar";
-        style=filled;
-        color="#f5f5f5";
-
-        playbook [label="playbook", fillcolor="#e8f5e9"];
-        play [label="play", fillcolor="#e8f5e9"];
-        task [label="task", fillcolor="#e8f5e9"];
-        block [label="block", fillcolor="#e8f5e9"];
-        role_ref [label="role_reference", fillcolor="#e8f5e9"];
-        template [label="jinja_template", fillcolor="#fce4ec"];
-        var_ref [label="variable_reference", fillcolor="#fce4ec"];
-    }
-
-    yaml -> playbook [label="extends"];
-    yaml -> play;
-    yaml -> task;
-    yaml -> block;
-    jinja -> template [label="embeds"];
-    jinja -> var_ref;
-
-    playbook -> play [label="contains"];
-    play -> task;
-    play -> block;
-    play -> role_ref;
-    block -> task;
-    task -> template [style=dashed, label="string values"];
+package "Base Grammars" {
+  [tree-sitter-yaml] as yaml #e3f2fd
+  [tree-sitter-jinja2] as jinja #fff3e0
 }
+
+package "Composite Grammar" #f5f5f5 {
+  [playbook] as playbook #e8f5e9
+  [play] as play #e8f5e9
+  [task] as task #e8f5e9
+  [block] as block #e8f5e9
+  [role_reference] as role_ref #e8f5e9
+  [jinja_template] as template #fce4ec
+  [variable_reference] as var_ref #fce4ec
+}
+
+yaml -down-> playbook : extends
+yaml -down-> play
+yaml -down-> task
+yaml -down-> block
+jinja -down-> template : embeds
+jinja -down-> var_ref
+
+playbook -down-> play : contains
+play -down-> task
+play -down-> block
+play -down-> role_ref
+block -down-> task
+task ..> template : string values
+@enduml
 #+end_src
 
 #+RESULTS:
@@ -592,45 +568,42 @@ filter_chain: $ => seq(
 
 **** How: Build Pipeline
 
-#+begin_src dot :file images/build-pipeline.png :cmdline -Kdot -Tpng :exports results
-digraph pipeline {
-    rankdir=LR;
-    node [shape=box, style="rounded,filled", fontname="Helvetica"];
+#+begin_src plantuml :file images/build-pipeline.png :exports results
+@startuml
+!theme plain
+left to right direction
+skinparam packageStyle rectangle
 
-    subgraph cluster_inputs {
-        label="Inputs";
-        ansible [label="Ansible Source\n(fattributes)", fillcolor="#e3f2fd"];
-        yaml_grammar [label="tree-sitter-yaml\ngrammar.js", fillcolor="#e3f2fd"];
-        jinja_grammar [label="tree-sitter-jinja2\ngrammar.js", fillcolor="#e3f2fd"];
-    }
-
-    subgraph cluster_generate {
-        label="Generation (Python)";
-        extract [label="extract_keywords.py", fillcolor="#fff3e0"];
-        compose [label="compose_grammar.py", fillcolor="#fff3e0"];
-    }
-
-    subgraph cluster_build {
-        label="Build (Node.js)";
-        treesitter [label="tree-sitter generate", fillcolor="#e8f5e9"];
-        compile [label="tree-sitter build", fillcolor="#e8f5e9"];
-    }
-
-    subgraph cluster_outputs {
-        label="Outputs";
-        parser_c [label="parser.c", fillcolor="#fce4ec"];
-        bindings [label="Python bindings\n(.so/.pyd)", fillcolor="#fce4ec"];
-    }
-
-    ansible -> extract;
-    extract -> compose [label="keywords.json"];
-    yaml_grammar -> compose;
-    jinja_grammar -> compose;
-    compose -> treesitter [label="grammar.js"];
-    treesitter -> parser_c;
-    parser_c -> compile;
-    compile -> bindings;
+package "Inputs" {
+  [Ansible Source\n(fattributes)] as ansible #e3f2fd
+  [tree-sitter-yaml\ngrammar.js] as yaml_grammar #e3f2fd
+  [tree-sitter-jinja2\ngrammar.js] as jinja_grammar #e3f2fd
 }
+
+package "Generation (Python)" {
+  [extract_keywords.py] as extract #fff3e0
+  [compose_grammar.py] as compose #fff3e0
+}
+
+package "Build (Node.js)" {
+  [tree-sitter generate] as treesitter #e8f5e9
+  [tree-sitter build] as compile #e8f5e9
+}
+
+package "Outputs" {
+  [parser.c] as parser_c #fce4ec
+  [Python bindings\n(.so/.pyd)] as bindings #fce4ec
+}
+
+ansible -right-> extract
+extract -right-> compose : keywords.json
+yaml_grammar -right-> compose
+jinja_grammar -right-> compose
+compose -right-> treesitter : grammar.js
+treesitter -right-> parser_c
+parser_c -right-> compile
+compile -right-> bindings
+@enduml
 #+end_src
 
 #+RESULTS:
