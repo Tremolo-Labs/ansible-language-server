@@ -1,4 +1,4 @@
-* Project Management
+* Ansible Language Server
 :PROPERTIES:
 :VISIBILITY: folded
 :ID:       47687761-e532-460c-9bec-ea6a1708fd0a
@@ -75,9 +75,9 @@
     - [ ] [[id:definition-provider][DefinitionProvider]] - go-to-definition for roles/includes
     - [ ] [[id:completion-provider][CompletionProvider]] - context-aware completions
 
-*** Future: Custom Tree-Sitter Grammar
+*** Custom Tree-Sitter Grammar
 12. [ ] [[id:65a482d4-c8c4-493b-ad0f-bf467a2cffbc][Custom tree-sitter-ansible grammar]]
-    - [ ] Keyword extraction from Ansible source
+    - [ ] Keyword and other metadata extraction from Ansible source
     - [ ] Grammar composition (YAML + Jinja2 + Ansible)
     - [ ] CI matrix build for multiple Ansible versions
     - [ ] Python bindings generation
@@ -105,7 +105,12 @@
 |    6 | LSP Core         | TODO   | ansibleLanguageService.ts, server.ts             |
 |    7 | Custom Grammar   | DESIGN | [[id:65a482d4-c8c4-493b-ad0f-bf467a2cffbc][tree-sitter-ansible]] (YAML+Jinja2+keywords)       |
 
-** Running Tests
+** TODO Running Tests
+:PROPERTIES:
+:ID:       b3d6efec-9644-4b4f-b4fe-2f3a572a7273
+:END:
+- Note taken on [2026-01-30 Fri 15:47] \\
+  I broke it somehow with a ~uv sync~ command. Fix it and update the docs
 #+begin_src bash :results output :wrap example
 uv run pytest tests/ -v
 #+end_src

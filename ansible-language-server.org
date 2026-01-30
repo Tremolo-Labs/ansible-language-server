@@ -13,7 +13,7 @@ The Python port of ansible-language-server aims to:
 3. *Simplified Architecture* - Replace complex subprocess management with Python library calls (=podman-py=, =importlib.metadata=, =ansible-runner=)
 4. *Better Developer Experience* - Format with =black=, lint with =ruff=, type-check with =mypy=, all working on Python code
 
-*** TODO Architecture
+*** Architecture
 :PROPERTIES:
 :ID:       architecture
 :END:
@@ -411,7 +411,7 @@ Ansible defines play/task/block/role keywords as class attributes using a descri
 
 See [[file:src/ansible_ls/utils/ansible_dynamic.py][ansible_dynamic.py]] for the dynamic loader and [[file:src/ansible_ls/utils/ansible_keywords.py][ansible_keywords.py]] for the static definitions with documentation strings.
 
-*** NEXT Full Ansible parsing with custom =tree-sitter= grammar       :project:
+*** TODO Full Ansible parsing with custom =tree-sitter= grammar       :project:
 :PROPERTIES:
 :ID:       65a482d4-c8c4-493b-ad0f-bf467a2cffbc
 :END:
@@ -613,8 +613,13 @@ compile -right-> bindings
 #+RESULTS:
 [[file:images/build-pipeline.png]]
 
-***** Keyword Extraction Script
+***** NEXT Keyword Extraction Script
+:PROPERTIES:
+:ID:       296ff42f-3f7f-4a04-b06a-b07d5b0b46e0
+:END:
 
+- Note taken on [2026-01-30 Fri 11:34] \\
+  is there any other metadata, like allowed filters in Jinja, that we need to scrape from Ansible internals for this grammar? Add it here, be thorough. If it gets too big, feel free to break it up into multiple subtrees. 
 #+begin_src python :tangle tools/extract_keywords.py :mkdirp t
 """Extract Ansible keywords from source for grammar generation.
 
