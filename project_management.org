@@ -20,26 +20,26 @@
 | commandRunner.py      | TODO    | ~100  | [[id:external-tool-integration][External Tool Integration]] |
 |-----------------------+---------+-------+---------------------------|
 | *Models*                |         |       |                           |
-| [[file:src/ansible_ls/models/module.py][module.py]]             | ✅ DONE | ~70   | [[*Module Metadata][Module Metadata]]           |
-| settings.py           | TODO    | ~100  | [[*Extension Settings][Extension Settings]]        |
+| [[file:src/ansible_ls/models/module.py][module.py]]             | ✅ DONE | ~70   | [[id:module-metadata][Module Metadata]]           |
+| settings.py           | TODO    | ~100  | [[id:extension-settings][Extension Settings]]        |
 |-----------------------+---------+-------+---------------------------|
 | *Services*              |         |       |                           |
-| settings_manager.py   | TODO    | ~150  | [[*Settings Service][Settings Service]]          |
-| workspace_manager.py  | TODO    | ~240  | [[*Workspace Service][Workspace Service]]         |
-| docs_library.py       | TODO    | ~275  | [[*Documentation Library][Documentation Library]]     |
-| validation_manager.py | TODO    | ~180  | [[*Validation Service][Validation Service]]        |
-| ansible_lint.py       | TODO    | ~200  | [[*Validation Service][Validation Service]]        |
-| execution_env.py      | TODO    | ~536  | [[*Container Management][Container Management]]      |
+| settings_manager.py   | TODO    | ~150  | [[id:settings-service][Settings Service]]          |
+| workspace_manager.py  | TODO    | ~240  | [[id:workspace-service][Workspace Service]]         |
+| docs_library.py       | TODO    | ~275  | [[id:documentation-library][Documentation Library]]     |
+| validation_manager.py | TODO    | ~180  | [[id:validation-service][Validation Service]]        |
+| ansible_lint.py       | TODO    | ~200  | [[id:validation-service][Validation Service]]        |
+| execution_env.py      | TODO    | ~536  | [[id:container-management][Container Management]]      |
 |-----------------------+---------+-------+---------------------------|
 | *Providers*             |         |       |                           |
-| hover.py              | TODO    | ~150  | [[*Hover Provider][Hover Provider]]            |
-| definition.py         | TODO    | ~120  | [[*Definition Provider][Definition Provider]]       |
-| completion.py         | TODO    | ~666  | [[*Completion Provider][Completion Provider]]       |
-| validation.py         | TODO    | ~180  | [[*Validation Service][Validation Service]]        |
+| hover.py              | TODO    | ~150  | [[id:hover-provider][Hover Provider]]            |
+| definition.py         | TODO    | ~120  | [[id:definition-provider][Definition Provider]]       |
+| completion.py         | TODO    | ~666  | [[id:completion-provider][Completion Provider]]       |
+| validation.py         | TODO    | ~180  | [[id:validation-service][Validation Service]]        |
 | semantic_tokens.py    | TODO    | ~200  | (not yet documented)      |
 |-----------------------+---------+-------+---------------------------|
 | *Server*                |         |       |                           |
-| [[file:src/ansible_ls/server.py][server.py]]             | ✅ DONE | ~15   | [[*Server Entry Point][Server Entry Point]]        |
+| [[file:src/ansible_ls/server.py][server.py]]             | ✅ DONE | ~15   | [[id:server-entry-point][Server Entry Point]]        |
 
 *Tests:* 59 passing (27 dynamic keyword tests, 23 static keyword tests, 9 YAML utils tests)
 
@@ -49,27 +49,27 @@
 :END:
 
 *** Completed
-1. [X] Initialize Python project with =uv init= → [[*Project Configuration][Project Configuration]]
-2. [X] Research tree-sitter for YAML AST → [[*YAML Parsing][YAML Parsing]]
-3. [X] Research podman-py for container management → [[*Container Management][Container Management]]
-4. [X] Research Ansible Python APIs → [[*Ansible Keywords][Ansible Keywords]]
-5. [X] Fix pyproject.toml build-system → [[*Project Configuration][Project Configuration]]
-6. [X] Set up pytest infrastructure → [[*Test Infrastructure][Test Infrastructure]]
-7. [X] Port utils/ansible.ts keyword definitions → [[*Ansible Keywords][Ansible Keywords]]
-8. [X] Port interfaces/module.ts to dataclasses → [[*Module Metadata][Module Metadata]]
-9. [X] Port utils/yaml.ts using tree-sitter-yaml → [[*YAML Parsing][YAML Parsing]]
+1. [X] Initialize Python project with =uv init= → [[id:project-configuration][Project Configuration]]
+2. [X] Research tree-sitter for YAML AST → [[id:yaml-parsing][YAML Parsing]]
+3. [X] Research podman-py for container management → [[id:container-management][Container Management]]
+4. [X] Research Ansible Python APIs → [[id:ansible-keywords][Ansible Keywords]]
+5. [X] Fix pyproject.toml build-system → [[id:project-configuration][Project Configuration]]
+6. [X] Set up pytest infrastructure → [[id:test-infrastructure][Test Infrastructure]]
+7. [X] Port utils/ansible.ts keyword definitions → [[id:ansible-keywords][Ansible Keywords]]
+8. [X] Port interfaces/module.ts to dataclasses → [[id:module-metadata][Module Metadata]]
+9. [X] Port utils/yaml.ts using tree-sitter-yaml → [[id:yaml-parsing][YAML Parsing]]
 
 *** In Progress
 10. [ ] Implement services
-    - [ ] [[*Settings Service][SettingsManager]] - settings caching and LSP config
-    - [ ] [[*Workspace Service][WorkspaceManager]] - multi-folder context
-    - [ ] [[*Documentation Library][DocsLibrary]] - module documentation cache
-    - [ ] [[*Validation Service][ValidationManager]] - ansible-lint integration
+    - [ ] [[id:settings-service][SettingsManager]] - settings caching and LSP config
+    - [ ] [[id:workspace-service][WorkspaceManager]] - multi-folder context
+    - [ ] [[id:documentation-library][DocsLibrary]] - module documentation cache
+    - [ ] [[id:validation-service][ValidationManager]] - ansible-lint integration
 
 11. [ ] Tangle and implement providers
-    - [ ] [[*Hover Provider][HoverProvider]] - keyword and module docs on hover
-    - [ ] [[*Definition Provider][DefinitionProvider]] - go-to-definition for roles/includes
-    - [ ] [[*Completion Provider][CompletionProvider]] - context-aware completions
+    - [ ] [[id:hover-provider][HoverProvider]] - keyword and module docs on hover
+    - [ ] [[id:definition-provider][DefinitionProvider]] - go-to-definition for roles/includes
+    - [ ] [[id:completion-provider][CompletionProvider]] - context-aware completions
 
 *** Completion Provider Checklist
 - [ ] Register completion provider with =@server.feature=

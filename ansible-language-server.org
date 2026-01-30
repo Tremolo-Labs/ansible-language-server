@@ -20,7 +20,7 @@ The Python port of ansible-language-server aims to:
 
 - Note taken on [2026-01-29 Thu 15:13] \\
   for architecture diagrams, use UML or graphviz or something appropriate for org mode. Embed links.
-The server follows the standard Language Server Protocol architecture, built on [[https://github.com/openlawlibrary/pygls][pygls]]. For TypeScript codebase structure, see [[*TypeScript Codebase Overview][TypeScript Codebase Overview]].
+The server follows the standard Language Server Protocol architecture, built on [[https://github.com/openlawlibrary/pygls][pygls]]. For TypeScript codebase structure, see [[id:typescript-overview][TypeScript Codebase Overview]].
 
 #+begin_src
 ┌─────────────────────────────────────────────────────────────────┐
@@ -95,7 +95,7 @@ For a language server that re-parses on every keystroke, we need:
 
 *TypeScript:* [[file:src/utils/yaml.ts][src/utils/yaml.ts]] (663 lines) uses the npm =yaml= package with custom AST traversal.
 
-*Python:* We use =tree-sitter-yaml= which provides all three requirements. tree-sitter-yaml produces more wrapper nodes than npm =yaml=, so [[*AncestryBuilder][AncestryBuilder]] skips intermediate nodes during navigation.
+*Python:* We use =tree-sitter-yaml= which provides all three requirements. tree-sitter-yaml produces more wrapper nodes than npm =yaml=, so [[id:ancestry-builder][AncestryBuilder]] skips intermediate nodes during navigation.
 
 #+begin_src python :tangle src/ansible_ls/utils/yaml_utils.py :mkdirp t
 """YAML AST utilities using tree-sitter.
@@ -312,7 +312,7 @@ class AncestryBuilder:
 :ID:       ansible-keywords
 :END:
 
-Ansible defines play/task/block/role keywords as class attributes using a descriptor pattern called =fattributes=. For detailed API research, see [[*Ansible Internal APIs][Ansible Internal APIs]].
+Ansible defines play/task/block/role keywords as class attributes using a descriptor pattern called =fattributes=. For detailed API research, see [[id:ansible-internal-apis][Ansible Internal APIs]].
 
 *TypeScript:* [[file:src/utils/ansible.ts][src/utils/ansible.ts]] (722 lines) contains hand-maintained keyword lists with documentation strings.
 
@@ -1221,7 +1221,7 @@ async def hover(params: types.HoverParams) -> types.Hover | None:
 Each provider:
 1. Receives strongly-typed params from =lsprotocol=
 2. Accesses documents via =server.workspace.get_document()=
-3. Uses [[*Services][services]] for business logic
+3. Uses [[id:services][services]] for business logic
 4. Returns strongly-typed results or =None=
 
 **** Hover Provider
@@ -2114,7 +2114,7 @@ class TestYamlParsing:
 :ID:       typescript-overview
 :END:
 
-Referenced from [[*Architecture][Architecture]].
+Referenced from [[id:architecture][Architecture]].
 
 The ansible-language-server is a TypeScript implementation of the Language Server Protocol for Ansible playbooks. Total: ~7,126 lines across 34 files.
 
@@ -2150,7 +2150,7 @@ Key modules by complexity:
 :ID:       container-management
 :END:
 
-Referenced from [[*External Tool Integration][External Tool Integration]] and the Status Dashboard.
+Referenced from [[id:external-tools][External Tool Integration]] and the Status Dashboard.
 
 For execution environment support, we use [[https://github.com/containers/podman-py][podman-py]] (official Podman Python SDK) instead of subprocess calls:
 
@@ -2185,7 +2185,7 @@ class ExecutionEnvironment:
 :ID:       ansible-internal-apis
 :END:
 
-Referenced from [[*Ansible Keywords][Ansible Keywords]].
+Referenced from [[id:ansible-keywords][Ansible Keywords]].
 
 Ansible defines play/task/block/role keywords as class attributes using a descriptor pattern:
 
@@ -2216,7 +2216,7 @@ print(attr.default)    # default value
 :ID:       dependency-mapping
 :END:
 
-Referenced from [[*Architecture][Architecture]].
+Referenced from [[id:architecture][Architecture]].
 
 | TypeScript                  | Python Equivalent                   | Notes                    |
 |-----------------------------+-------------------------------------+--------------------------|
@@ -2233,7 +2233,7 @@ Referenced from [[*Architecture][Architecture]].
 :ID:       project-configuration
 :END:
 
-Referenced from [[*TODO Progress][TODO Progress]].
+Referenced from [[id:042d8753-3757-48a6-b5a0-251196171795][TODO Progress]].
 
 **** pyproject.toml
 
