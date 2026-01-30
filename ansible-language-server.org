@@ -613,28 +613,1079 @@ compile -right-> bindings
 #+RESULTS:
 [[file:images/build-pipeline.png]]
 
-***** NEXT Keyword Extraction Script
+***** DONE Keyword Extraction Script
 :PROPERTIES:
 :ID:       296ff42f-3f7f-4a04-b06a-b07d5b0b46e0
 :END:
 
 - Note taken on [2026-01-30 Fri 11:34] \\
-  is there any other metadata, like allowed filters in Jinja, that we need to scrape from Ansible internals for this grammar? Add it here, be thorough. If it gets too big, feel free to break it up into multiple subtrees. 
-#+begin_src python :tangle tools/extract_keywords.py :mkdirp t
-"""Extract Ansible keywords from source for grammar generation.
+  is there any other metadata, like allowed filters in Jinja, that we need to scrape from Ansible internals for this grammar? Add it here, be thorough. If it gets too big, feel free to break it up into multiple subtrees.
 
-This script imports Ansible's internal fattributes API and exports
-keyword definitions as JSON for the grammar generator.
+The keyword extraction script extracts all metadata needed for the grammar:
+
+| Category       | Source                              | Count (2.20.1) | Notes                    |
+|----------------+-------------------------------------+----------------+--------------------------|
+| Keywords       | =fattributes= on Play/Task/Block    | ~140 unique    | Core playbook structure  |
+| Jinja Filters  | =filter_loader.all()=               | 78 unique      | Plus 54 Jinja2 builtins  |
+| Jinja Tests    | =test_loader.all()=                 | 51 unique      | Plus 39 Jinja2 builtins  |
+| Lookups        | =lookup_loader.all()=               | 25 plugins     | With option metadata     |
+| Magic Vars     | Hardcoded list                      | 20+            | Documented in Ansible    |
+| Callbacks      | =callback_loader.all()=             | 10+ plugins    | For advanced use         |
+
+****** Jinja2 Filters
+:PROPERTIES:
+:ID:       jinja-filters
+:END:
+
+Ansible extends Jinja2 with custom filters for data manipulation. Access via =filter_loader=:
+
+#+begin_src python
+from ansible.plugins.loader import filter_loader
+
+# Enumerate all Ansible filters
+for wrapper in filter_loader.all():
+    print(f"{wrapper.ansible_name}: aliases={wrapper.ansible_aliases}")
+#+end_src
+
+Sample Ansible filters (78 in 2.20.1):
+- =b64encode=, =b64decode= - Base64 encoding
+- =to_json=, =from_json= - JSON serialization
+- =to_yaml=, =from_yaml= - YAML serialization
+- =regex_search=, =regex_replace=, =regex_findall= - Regex operations
+- =combine=, =dict2items=, =items2dict= - Dict manipulation
+- =mandatory= - Force variable presence
+- =default=, =ternary= - Conditional values
+- =hash=, =password_hash= - Cryptographic hashing
+
+Jinja2 builtins (54 additional):
+- =upper=, =lower=, =capitalize=, =title= - String case
+- =replace=, =trim=, =truncate= - String manipulation
+- =join=, =first=, =last=, =length= - Sequence operations
+- =int=, =float=, =string=, =list= - Type conversion
+- =sort=, =unique=, =reverse=, =map=, =select=, =reject= - Iteration
+
+****** Jinja2 Tests
+:PROPERTIES:
+:ID:       jinja-tests
+:END:
+
+Tests are used in conditionals (=when: var is test=). Access via =test_loader=:
+
+#+begin_src python
+from ansible.plugins.loader import test_loader
+
+for wrapper in test_loader.all():
+    print(f"{wrapper.ansible_name}: aliases={wrapper.ansible_aliases}")
+#+end_src
+
+Sample Ansible tests (51 in 2.20.1):
+- =failed=, =succeeded=, =changed=, =skipped= - Task status
+- =reachable=, =unreachable= - Host connectivity
+- =file=, =directory=, =link=, =exists= - File system
+- =match=, =search=, =regex= - Pattern matching
+- =version=, =version_compare= - Version comparison
+- =superset=, =subset=, =contains= - Collection tests
+- =truthy=, =falsy= - Boolean evaluation
+
+Jinja2 builtins (39 additional):
+- =defined=, =undefined= - Variable existence
+- =none=, =boolean=, =integer=, =float=, =string=, =mapping=, =iterable= - Type tests
+- =upper=, =lower= - String case
+- =even=, =odd=, =divisibleby= - Numeric tests
+- =in= - Membership
+
+****** Lookup Plugins
+:PROPERTIES:
+:ID:       lookup-plugins
+:END:
+
+Lookups retrieve data from external sources. They have rich option metadata:
+
+#+begin_src python
+from ansible.plugins.loader import lookup_loader
+
+for wrapper in lookup_loader.all():
+    name = wrapper.ansible_name
+    options = wrapper.option_definitions or {}
+    print(f"{name}: {len(options)} options")
+    for opt_name, opt_meta in options.items():
+        print(f"  {opt_name}: {opt_meta.get('description', '')[:50]}")
+#+end_src
+
+Sample lookups (25 in 2.20.1):
+- =file= - Read file contents
+- =template= - Render Jinja2 template
+- =env= - Read environment variable
+- =config= - Read Ansible configuration
+- =pipe= - Execute command and return output
+- =csvfile=, =ini=, =password=, =lines= - Data file parsing
+- =dict=, =items=, =list= - Data structure helpers
+- =fileglob=, =first_found= - File discovery
+- =url= - HTTP fetch
+- =sequence=, =random_choice=, =cartesian= - Generation
+
+****** Magic Variables
+:PROPERTIES:
+:ID:       magic-variables
+:END:
+
+Magic variables are injected into the execution context. These are hardcoded (not available via API):
+
+| Variable                 | Scope   | Description                                |
+|--------------------------+---------+--------------------------------------------|
+| =inventory_hostname=     | Host    | Full hostname from inventory               |
+| =inventory_hostname_short= | Host  | Short hostname (before first dot)          |
+| =groups=                 | Global  | Dict of all groups and their hosts         |
+| =group_names=            | Host    | List of groups the host belongs to         |
+| =hostvars=               | Global  | Dict of all host variables                 |
+| =ansible_host=           | Host    | Target host address                        |
+| =ansible_port=           | Host    | Target connection port                     |
+| =ansible_user=           | Host    | Target user for connection                 |
+| =ansible_connection=     | Host    | Connection plugin name                     |
+| =ansible_become=         | Task    | Whether privilege escalation is enabled    |
+| =ansible_become_user=    | Task    | User to escalate to                        |
+| =ansible_check_mode=     | Play    | True if running in check mode              |
+| =ansible_diff_mode=      | Play    | True if running in diff mode               |
+| =ansible_verbosity=      | Play    | Current verbosity level                    |
+| =play_hosts=             | Play    | List of hosts in current play              |
+| =ansible_play_name=      | Play    | Name of the current play                   |
+| =ansible_role_name=      | Role    | Name of currently executing role           |
+| =item=                   | Loop    | Current loop item                          |
+| =ansible_loop_var=       | Loop    | Name of the loop variable                  |
+| =ansible_index_var=      | Loop    | Name of loop index variable                |
+
+****** Static Fallbacks
+:PROPERTIES:
+:ID:       static-fallbacks
+:END:
+
+When Ansible isn't installed, the extraction script falls back to static lists. These are maintained manually but should cover common use cases. The static fallback file extends [[file:src/ansible_ls/utils/ansible_keywords.py][ansible_keywords.py]] with Jinja2 filter and test definitions.
+
+#+begin_src python :tangle src/ansible_ls/utils/jinja_fallbacks.py :mkdirp t
+"""Static Jinja2 filter and test fallbacks.
+
+Used when Ansible isn't available for dynamic extraction.
+These lists are maintained manually and should cover common cases.
+"""
+
+from dataclasses import dataclass
+from typing import Optional
+
+
+@dataclass(frozen=True)
+class FilterInfo:
+    """Jinja2 filter metadata."""
+
+    name: str
+    description: str
+    source: str = "ansible"  # "ansible" or "jinja2"
+    example: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class TestInfo:
+    """Jinja2 test metadata."""
+
+    name: str
+    description: str
+    source: str = "ansible"  # "ansible" or "jinja2"
+    example: Optional[str] = None
+
+
+# =============================================================================
+# Ansible Jinja2 Filters
+# =============================================================================
+
+JINJA_FILTERS: dict[str, FilterInfo] = {
+    # Data encoding
+    "b64encode": FilterInfo(
+        "b64encode",
+        "Base64 encode a string",
+        example="{{ 'hello' | b64encode }}",
+    ),
+    "b64decode": FilterInfo(
+        "b64decode",
+        "Base64 decode a string",
+        example="{{ encoded | b64decode }}",
+    ),
+    "to_json": FilterInfo(
+        "to_json",
+        "Convert value to JSON string",
+        example="{{ myvar | to_json }}",
+    ),
+    "from_json": FilterInfo(
+        "from_json",
+        "Parse JSON string to value",
+        example="{{ json_string | from_json }}",
+    ),
+    "to_yaml": FilterInfo(
+        "to_yaml",
+        "Convert value to YAML string",
+        example="{{ myvar | to_yaml }}",
+    ),
+    "from_yaml": FilterInfo(
+        "from_yaml",
+        "Parse YAML string to value",
+        example="{{ yaml_string | from_yaml }}",
+    ),
+    "to_nice_json": FilterInfo(
+        "to_nice_json",
+        "Convert to pretty-printed JSON",
+        example="{{ myvar | to_nice_json }}",
+    ),
+    "to_nice_yaml": FilterInfo(
+        "to_nice_yaml",
+        "Convert to pretty-printed YAML",
+        example="{{ myvar | to_nice_yaml }}",
+    ),
+    # String manipulation
+    "quote": FilterInfo(
+        "quote",
+        "Shell-quote a string for safe use in commands",
+        example="{{ filename | quote }}",
+    ),
+    "regex_search": FilterInfo(
+        "regex_search",
+        "Search string with regex, return match or empty",
+        example="{{ text | regex_search('pattern') }}",
+    ),
+    "regex_replace": FilterInfo(
+        "regex_replace",
+        "Replace regex matches in string",
+        example="{{ text | regex_replace('old', 'new') }}",
+    ),
+    "regex_findall": FilterInfo(
+        "regex_findall",
+        "Find all regex matches in string",
+        example="{{ text | regex_findall('\\\\d+') }}",
+    ),
+    "regex_escape": FilterInfo(
+        "regex_escape",
+        "Escape special regex characters",
+        example="{{ user_input | regex_escape }}",
+    ),
+    "splitext": FilterInfo(
+        "splitext",
+        "Split filename into base and extension",
+        example="{{ 'file.txt' | splitext }}",
+    ),
+    "basename": FilterInfo(
+        "basename",
+        "Get filename from path",
+        example="{{ '/path/to/file.txt' | basename }}",
+    ),
+    "dirname": FilterInfo(
+        "dirname",
+        "Get directory from path",
+        example="{{ '/path/to/file.txt' | dirname }}",
+    ),
+    "expanduser": FilterInfo(
+        "expanduser",
+        "Expand ~ to home directory",
+        example="{{ '~/.ssh/id_rsa' | expanduser }}",
+    ),
+    "expandvars": FilterInfo(
+        "expandvars",
+        "Expand environment variables in path",
+        example="{{ '$HOME/.config' | expandvars }}",
+    ),
+    "realpath": FilterInfo(
+        "realpath",
+        "Get absolute path resolving symlinks",
+        example="{{ './relative/path' | realpath }}",
+    ),
+    # Type conversion
+    "bool": FilterInfo(
+        "bool",
+        "Convert to boolean",
+        example="{{ 'yes' | bool }}",
+    ),
+    "int": FilterInfo(
+        "int",
+        "Convert to integer",
+        source="jinja2",
+        example="{{ '42' | int }}",
+    ),
+    "float": FilterInfo(
+        "float",
+        "Convert to float",
+        source="jinja2",
+        example="{{ '3.14' | float }}",
+    ),
+    "string": FilterInfo(
+        "string",
+        "Convert to string",
+        source="jinja2",
+        example="{{ 42 | string }}",
+    ),
+    "list": FilterInfo(
+        "list",
+        "Convert to list",
+        source="jinja2",
+        example="{{ 'abc' | list }}",
+    ),
+    # Collection manipulation
+    "combine": FilterInfo(
+        "combine",
+        "Merge multiple dicts, later values override",
+        example="{{ dict1 | combine(dict2) }}",
+    ),
+    "dict2items": FilterInfo(
+        "dict2items",
+        "Convert dict to list of {key, value} dicts",
+        example="{{ mydict | dict2items }}",
+    ),
+    "items2dict": FilterInfo(
+        "items2dict",
+        "Convert list of {key, value} dicts to dict",
+        example="{{ item_list | items2dict }}",
+    ),
+    "flatten": FilterInfo(
+        "flatten",
+        "Flatten nested lists",
+        example="{{ nested_list | flatten }}",
+    ),
+    "unique": FilterInfo(
+        "unique",
+        "Remove duplicates from list",
+        example="{{ mylist | unique }}",
+    ),
+    "union": FilterInfo(
+        "union",
+        "Set union of two lists",
+        example="{{ list1 | union(list2) }}",
+    ),
+    "intersect": FilterInfo(
+        "intersect",
+        "Set intersection of two lists",
+        example="{{ list1 | intersect(list2) }}",
+    ),
+    "difference": FilterInfo(
+        "difference",
+        "Set difference of two lists",
+        example="{{ list1 | difference(list2) }}",
+    ),
+    "symmetric_difference": FilterInfo(
+        "symmetric_difference",
+        "Symmetric set difference of two lists",
+        example="{{ list1 | symmetric_difference(list2) }}",
+    ),
+    "zip": FilterInfo(
+        "zip",
+        "Zip lists together",
+        example="{{ list1 | zip(list2) | list }}",
+    ),
+    "zip_longest": FilterInfo(
+        "zip_longest",
+        "Zip lists, padding shorter with fillvalue",
+        example="{{ list1 | zip_longest(list2, fillvalue='') | list }}",
+    ),
+    "product": FilterInfo(
+        "product",
+        "Cartesian product of lists",
+        example="{{ list1 | product(list2) | list }}",
+    ),
+    "permutations": FilterInfo(
+        "permutations",
+        "All permutations of list",
+        example="{{ mylist | permutations | list }}",
+    ),
+    "combinations": FilterInfo(
+        "combinations",
+        "All combinations of list",
+        example="{{ mylist | combinations(2) | list }}",
+    ),
+    # Conditional/default
+    "mandatory": FilterInfo(
+        "mandatory",
+        "Fail if value is undefined",
+        example="{{ required_var | mandatory }}",
+    ),
+    "default": FilterInfo(
+        "default",
+        "Provide default if undefined or empty",
+        source="jinja2",
+        example="{{ myvar | default('fallback') }}",
+    ),
+    "ternary": FilterInfo(
+        "ternary",
+        "Conditional value selection (like ternary operator)",
+        example="{{ condition | ternary('yes', 'no') }}",
+    ),
+    # Hashing
+    "hash": FilterInfo(
+        "hash",
+        "Hash string with given algorithm",
+        example="{{ password | hash('sha512') }}",
+    ),
+    "password_hash": FilterInfo(
+        "password_hash",
+        "Generate password hash for /etc/shadow",
+        example="{{ password | password_hash('sha512') }}",
+    ),
+    "checksum": FilterInfo(
+        "checksum",
+        "MD5 checksum of string",
+        example="{{ data | checksum }}",
+    ),
+    # IP address
+    "ipaddr": FilterInfo(
+        "ipaddr",
+        "Validate and manipulate IP addresses",
+        example="{{ '192.168.1.1' | ipaddr }}",
+    ),
+    "ipv4": FilterInfo(
+        "ipv4",
+        "Filter for IPv4 addresses",
+        example="{{ addresses | ipv4 }}",
+    ),
+    "ipv6": FilterInfo(
+        "ipv6",
+        "Filter for IPv6 addresses",
+        example="{{ addresses | ipv6 }}",
+    ),
+    # Jinja2 builtins
+    "upper": FilterInfo(
+        "upper",
+        "Convert string to uppercase",
+        source="jinja2",
+        example="{{ name | upper }}",
+    ),
+    "lower": FilterInfo(
+        "lower",
+        "Convert string to lowercase",
+        source="jinja2",
+        example="{{ name | lower }}",
+    ),
+    "capitalize": FilterInfo(
+        "capitalize",
+        "Capitalize first letter",
+        source="jinja2",
+        example="{{ name | capitalize }}",
+    ),
+    "title": FilterInfo(
+        "title",
+        "Title-case string",
+        source="jinja2",
+        example="{{ name | title }}",
+    ),
+    "trim": FilterInfo(
+        "trim",
+        "Strip whitespace from both ends",
+        source="jinja2",
+        example="{{ text | trim }}",
+    ),
+    "replace": FilterInfo(
+        "replace",
+        "Replace substring",
+        source="jinja2",
+        example="{{ text | replace('old', 'new') }}",
+    ),
+    "join": FilterInfo(
+        "join",
+        "Join list elements with separator",
+        source="jinja2",
+        example="{{ mylist | join(', ') }}",
+    ),
+    "split": FilterInfo(
+        "split",
+        "Split string by separator",
+        source="jinja2",
+        example="{{ csv | split(',') }}",
+    ),
+    "first": FilterInfo(
+        "first",
+        "Get first element of list",
+        source="jinja2",
+        example="{{ mylist | first }}",
+    ),
+    "last": FilterInfo(
+        "last",
+        "Get last element of list",
+        source="jinja2",
+        example="{{ mylist | last }}",
+    ),
+    "length": FilterInfo(
+        "length",
+        "Get length of list or string",
+        source="jinja2",
+        example="{{ mylist | length }}",
+    ),
+    "sort": FilterInfo(
+        "sort",
+        "Sort list",
+        source="jinja2",
+        example="{{ mylist | sort }}",
+    ),
+    "reverse": FilterInfo(
+        "reverse",
+        "Reverse list or string",
+        source="jinja2",
+        example="{{ mylist | reverse | list }}",
+    ),
+    "map": FilterInfo(
+        "map",
+        "Apply filter to each element",
+        source="jinja2",
+        example="{{ users | map(attribute='name') | list }}",
+    ),
+    "select": FilterInfo(
+        "select",
+        "Filter elements by test",
+        source="jinja2",
+        example="{{ numbers | select('even') | list }}",
+    ),
+    "reject": FilterInfo(
+        "reject",
+        "Filter elements by inverse test",
+        source="jinja2",
+        example="{{ numbers | reject('even') | list }}",
+    ),
+    "selectattr": FilterInfo(
+        "selectattr",
+        "Filter objects by attribute test",
+        source="jinja2",
+        example="{{ users | selectattr('active') | list }}",
+    ),
+    "rejectattr": FilterInfo(
+        "rejectattr",
+        "Filter objects by inverse attribute test",
+        source="jinja2",
+        example="{{ users | rejectattr('admin') | list }}",
+    ),
+    "groupby": FilterInfo(
+        "groupby",
+        "Group items by attribute",
+        source="jinja2",
+        example="{{ users | groupby('department') }}",
+    ),
+    "batch": FilterInfo(
+        "batch",
+        "Split list into chunks",
+        source="jinja2",
+        example="{{ items | batch(3) | list }}",
+    ),
+    "slice": FilterInfo(
+        "slice",
+        "Slice list into N sublists",
+        source="jinja2",
+        example="{{ items | slice(3) | list }}",
+    ),
+    "random": FilterInfo(
+        "random",
+        "Get random element from list",
+        source="jinja2",
+        example="{{ mylist | random }}",
+    ),
+    "shuffle": FilterInfo(
+        "shuffle",
+        "Shuffle list randomly",
+        example="{{ mylist | shuffle }}",
+    ),
+    "min": FilterInfo(
+        "min",
+        "Get minimum value",
+        source="jinja2",
+        example="{{ numbers | min }}",
+    ),
+    "max": FilterInfo(
+        "max",
+        "Get maximum value",
+        source="jinja2",
+        example="{{ numbers | max }}",
+    ),
+    "sum": FilterInfo(
+        "sum",
+        "Sum numeric values",
+        source="jinja2",
+        example="{{ numbers | sum }}",
+    ),
+    "abs": FilterInfo(
+        "abs",
+        "Absolute value",
+        source="jinja2",
+        example="{{ number | abs }}",
+    ),
+    "round": FilterInfo(
+        "round",
+        "Round to N decimal places",
+        source="jinja2",
+        example="{{ 3.14159 | round(2) }}",
+    ),
+    "indent": FilterInfo(
+        "indent",
+        "Indent text by N spaces",
+        source="jinja2",
+        example="{{ text | indent(4) }}",
+    ),
+    "wordwrap": FilterInfo(
+        "wordwrap",
+        "Wrap text at N characters",
+        source="jinja2",
+        example="{{ text | wordwrap(80) }}",
+    ),
+    "truncate": FilterInfo(
+        "truncate",
+        "Truncate string to N characters",
+        source="jinja2",
+        example="{{ text | truncate(50) }}",
+    ),
+    "center": FilterInfo(
+        "center",
+        "Center string in N characters",
+        source="jinja2",
+        example="{{ text | center(80) }}",
+    ),
+    "format": FilterInfo(
+        "format",
+        "Format string (like sprintf)",
+        source="jinja2",
+        example="{{ '%s: %d' | format(name, count) }}",
+    ),
+    "safe": FilterInfo(
+        "safe",
+        "Mark string as safe (no escaping)",
+        source="jinja2",
+        example="{{ html | safe }}",
+    ),
+    "escape": FilterInfo(
+        "escape",
+        "Escape HTML special characters",
+        source="jinja2",
+        example="{{ user_input | escape }}",
+    ),
+    "urlencode": FilterInfo(
+        "urlencode",
+        "URL-encode string",
+        source="jinja2",
+        example="{{ query | urlencode }}",
+    ),
+    "filesizeformat": FilterInfo(
+        "filesizeformat",
+        "Format bytes as human-readable size",
+        source="jinja2",
+        example="{{ bytes | filesizeformat }}",
+    ),
+    "pprint": FilterInfo(
+        "pprint",
+        "Pretty-print for debugging",
+        source="jinja2",
+        example="{{ complex_var | pprint }}",
+    ),
+    "tojson": FilterInfo(
+        "tojson",
+        "Safe JSON for embedding in HTML/JS",
+        source="jinja2",
+        example="{{ data | tojson }}",
+    ),
+}
+
+
+# =============================================================================
+# Ansible Jinja2 Tests
+# =============================================================================
+
+JINJA_TESTS: dict[str, TestInfo] = {
+    # Task result tests
+    "failed": TestInfo(
+        "failed",
+        "True if task result indicates failure",
+        example="when: result is failed",
+    ),
+    "succeeded": TestInfo(
+        "succeeded",
+        "True if task result indicates success",
+        example="when: result is succeeded",
+    ),
+    "success": TestInfo(
+        "success",
+        "Alias for succeeded",
+        example="when: result is success",
+    ),
+    "changed": TestInfo(
+        "changed",
+        "True if task result indicates change",
+        example="when: result is changed",
+    ),
+    "skipped": TestInfo(
+        "skipped",
+        "True if task was skipped",
+        example="when: result is skipped",
+    ),
+    "unreachable": TestInfo(
+        "unreachable",
+        "True if host was unreachable",
+        example="when: result is unreachable",
+    ),
+    "reachable": TestInfo(
+        "reachable",
+        "True if host was reachable",
+        example="when: result is reachable",
+    ),
+    "started": TestInfo(
+        "started",
+        "True if async task has started",
+        example="when: async_result is started",
+    ),
+    "finished": TestInfo(
+        "finished",
+        "True if async task has finished",
+        example="when: async_result is finished",
+    ),
+    # File tests
+    "file": TestInfo(
+        "file",
+        "True if path is a regular file",
+        example="when: path is file",
+    ),
+    "directory": TestInfo(
+        "directory",
+        "True if path is a directory",
+        example="when: path is directory",
+    ),
+    "link": TestInfo(
+        "link",
+        "True if path is a symbolic link",
+        example="when: path is link",
+    ),
+    "exists": TestInfo(
+        "exists",
+        "True if path exists",
+        example="when: path is exists",
+    ),
+    "mount": TestInfo(
+        "mount",
+        "True if path is a mount point",
+        example="when: path is mount",
+    ),
+    "abs": TestInfo(
+        "abs",
+        "True if path is absolute",
+        example="when: path is abs",
+    ),
+    "same_file": TestInfo(
+        "same_file",
+        "True if two paths refer to same file",
+        example="when: path1 is same_file(path2)",
+    ),
+    # Pattern matching
+    "match": TestInfo(
+        "match",
+        "True if string matches regex at start",
+        example="when: name is match('^prefix')",
+    ),
+    "search": TestInfo(
+        "search",
+        "True if string contains regex match",
+        example="when: text is search('pattern')",
+    ),
+    "regex": TestInfo(
+        "regex",
+        "True if string matches full regex",
+        example="when: value is regex('^\\\\d+$')",
+    ),
+    # Version comparison
+    "version": TestInfo(
+        "version",
+        "Compare version strings",
+        example="when: version is version('2.0', '>=')",
+    ),
+    "version_compare": TestInfo(
+        "version_compare",
+        "Alias for version test",
+        example="when: ver is version_compare('1.0', '>')",
+    ),
+    # Collection tests
+    "subset": TestInfo(
+        "subset",
+        "True if list is subset of another",
+        example="when: small_list is subset(big_list)",
+    ),
+    "superset": TestInfo(
+        "superset",
+        "True if list is superset of another",
+        example="when: big_list is superset(small_list)",
+    ),
+    "contains": TestInfo(
+        "contains",
+        "True if collection contains value",
+        example="when: mylist is contains('item')",
+    ),
+    "all": TestInfo(
+        "all",
+        "True if all items are truthy",
+        example="when: checks is all",
+    ),
+    "any": TestInfo(
+        "any",
+        "True if any item is truthy",
+        example="when: options is any",
+    ),
+    # Boolean tests
+    "truthy": TestInfo(
+        "truthy",
+        "True if value is truthy (not empty, false, none)",
+        example="when: value is truthy",
+    ),
+    "falsy": TestInfo(
+        "falsy",
+        "True if value is falsy",
+        example="when: value is falsy",
+    ),
+    # Type tests
+    "vault_encrypted": TestInfo(
+        "vault_encrypted",
+        "True if value is vault-encrypted",
+        example="when: secret is vault_encrypted",
+    ),
+    # Jinja2 builtins
+    "defined": TestInfo(
+        "defined",
+        "True if variable is defined",
+        source="jinja2",
+        example="when: myvar is defined",
+    ),
+    "undefined": TestInfo(
+        "undefined",
+        "True if variable is undefined",
+        source="jinja2",
+        example="when: myvar is undefined",
+    ),
+    "none": TestInfo(
+        "none",
+        "True if value is None",
+        source="jinja2",
+        example="when: value is none",
+    ),
+    "boolean": TestInfo(
+        "boolean",
+        "True if value is a boolean",
+        source="jinja2",
+        example="when: flag is boolean",
+    ),
+    "integer": TestInfo(
+        "integer",
+        "True if value is an integer",
+        source="jinja2",
+        example="when: count is integer",
+    ),
+    "float": TestInfo(
+        "float",
+        "True if value is a float",
+        source="jinja2",
+        example="when: ratio is float",
+    ),
+    "number": TestInfo(
+        "number",
+        "True if value is numeric",
+        source="jinja2",
+        example="when: value is number",
+    ),
+    "string": TestInfo(
+        "string",
+        "True if value is a string",
+        source="jinja2",
+        example="when: name is string",
+    ),
+    "mapping": TestInfo(
+        "mapping",
+        "True if value is a dict/mapping",
+        source="jinja2",
+        example="when: config is mapping",
+    ),
+    "iterable": TestInfo(
+        "iterable",
+        "True if value is iterable",
+        source="jinja2",
+        example="when: items is iterable",
+    ),
+    "sequence": TestInfo(
+        "sequence",
+        "True if value is a sequence",
+        source="jinja2",
+        example="when: items is sequence",
+    ),
+    "callable": TestInfo(
+        "callable",
+        "True if value is callable",
+        source="jinja2",
+        example="when: func is callable",
+    ),
+    "sameas": TestInfo(
+        "sameas",
+        "True if values are same object",
+        source="jinja2",
+        example="when: a is sameas(b)",
+    ),
+    "escaped": TestInfo(
+        "escaped",
+        "True if value is escaped",
+        source="jinja2",
+        example="when: text is escaped",
+    ),
+    "in": TestInfo(
+        "in",
+        "True if value is in container",
+        source="jinja2",
+        example="when: item is in(mylist)",
+    ),
+    "eq": TestInfo(
+        "eq",
+        "True if values are equal",
+        source="jinja2",
+        example="when: value is eq(other)",
+    ),
+    "equalto": TestInfo(
+        "equalto",
+        "Alias for eq",
+        source="jinja2",
+        example="when: value is equalto(other)",
+    ),
+    "ne": TestInfo(
+        "ne",
+        "True if values are not equal",
+        source="jinja2",
+        example="when: value is ne(other)",
+    ),
+    "lt": TestInfo(
+        "lt",
+        "True if value is less than",
+        source="jinja2",
+        example="when: count is lt(10)",
+    ),
+    "le": TestInfo(
+        "le",
+        "True if value is less than or equal",
+        source="jinja2",
+        example="when: count is le(10)",
+    ),
+    "gt": TestInfo(
+        "gt",
+        "True if value is greater than",
+        source="jinja2",
+        example="when: count is gt(0)",
+    ),
+    "ge": TestInfo(
+        "ge",
+        "True if value is greater than or equal",
+        source="jinja2",
+        example="when: count is ge(1)",
+    ),
+    "even": TestInfo(
+        "even",
+        "True if number is even",
+        source="jinja2",
+        example="when: index is even",
+    ),
+    "odd": TestInfo(
+        "odd",
+        "True if number is odd",
+        source="jinja2",
+        example="when: index is odd",
+    ),
+    "divisibleby": TestInfo(
+        "divisibleby",
+        "True if number is divisible by N",
+        source="jinja2",
+        example="when: count is divisibleby(3)",
+    ),
+    "upper": TestInfo(
+        "upper",
+        "True if string is uppercase",
+        source="jinja2",
+        example="when: text is upper",
+    ),
+    "lower": TestInfo(
+        "lower",
+        "True if string is lowercase",
+        source="jinja2",
+        example="when: text is lower",
+    ),
+}
+
+
+# =============================================================================
+# Lookup Plugins
+# =============================================================================
+
+LOOKUP_NAMES: list[str] = [
+    "config",
+    "csvfile",
+    "dict",
+    "env",
+    "file",
+    "fileglob",
+    "first_found",
+    "indexed_items",
+    "ini",
+    "inventory_hostnames",
+    "items",
+    "lines",
+    "list",
+    "nested",
+    "password",
+    "pipe",
+    "random_choice",
+    "sequence",
+    "subelements",
+    "template",
+    "together",
+    "unvault",
+    "url",
+    "varnames",
+    "vars",
+]
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+def get_filter_names() -> list[str]:
+    """Get list of all filter names."""
+    return list(JINJA_FILTERS.keys())
+
+
+def get_test_names() -> list[str]:
+    """Get list of all test names."""
+    return list(JINJA_TESTS.keys())
+
+
+def get_filter_info(name: str) -> FilterInfo | None:
+    """Get filter info by name."""
+    return JINJA_FILTERS.get(name)
+
+
+def get_test_info(name: str) -> TestInfo | None:
+    """Get test info by name."""
+    return JINJA_TESTS.get(name)
+#+end_src
+
+****** Full Extraction Script
+
+#+begin_src python :tangle tools/extract_keywords.py :mkdirp t
+"""Extract Ansible metadata from source for grammar generation.
+
+This script imports Ansible's internal APIs and exports all metadata
+needed for the tree-sitter grammar: keywords, filters, tests, lookups,
+and magic variables.
+
+Usage:
+    python tools/extract_keywords.py
+
+Output:
+    build/ansible_metadata.json - Complete metadata for grammar generation
 """
 
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 
-def extract_keywords() -> dict:
-    """Extract keywords from Ansible playbook classes."""
-    keywords = {
+def extract_keywords() -> dict[str, list[str]]:
+    """Extract keywords from Ansible playbook classes via fattributes."""
+    keywords: dict[str, list[str]] = {
         "play": [],
         "task": [],
         "block": [],
@@ -652,25 +1703,415 @@ def extract_keywords() -> dict:
         keywords["block"] = list(Block.fattributes.keys())
         keywords["role"] = list(RoleDefinition.fattributes.keys())
 
-        # Add metadata
+    except ImportError as e:
+        print(f"Warning: Could not import Ansible: {e}", file=sys.stderr)
+        keywords = _static_keyword_fallback()
+
+    return keywords
+
+
+def extract_keyword_metadata() -> dict[str, dict[str, Any]]:
+    """Extract detailed keyword metadata (type, required, default)."""
+    metadata: dict[str, dict[str, Any]] = {}
+
+    try:
+        from ansible.playbook.play import Play
+        from ansible.playbook.task import Task
+        from ansible.playbook.block import Block
+        from ansible.playbook.role.definition import RoleDefinition
+
         for context, cls in [
             ("play", Play),
             ("task", Task),
             ("block", Block),
             ("role", RoleDefinition),
         ]:
-            keywords[f"{context}_meta"] = {
-                name: {
+            metadata[context] = {}
+            for name, attr in cls.fattributes.items():
+                metadata[context][name] = {
                     "isa": getattr(attr, "isa", None),
                     "required": getattr(attr, "required", False),
-                    "default": repr(getattr(attr, "default", None)),
+                    "default": _serialize_default(getattr(attr, "default", None)),
+                    "listof": getattr(attr, "listof", None),
+                    "alias": getattr(attr, "alias", None),
                 }
-                for name, attr in cls.fattributes.items()
+
+    except ImportError:
+        pass  # Use static fallback
+
+    return metadata
+
+
+def extract_jinja_filters() -> dict[str, dict[str, Any]]:
+    """Extract Jinja2 filters from Ansible and builtin Jinja2."""
+    filters: dict[str, dict[str, Any]] = {}
+    used_fallback = False
+
+    # Ansible filters via loader
+    try:
+        from ansible.plugins.loader import filter_loader
+
+        seen_names: set[str] = set()
+        for wrapper in filter_loader.all():
+            name = wrapper.ansible_name
+            if name in seen_names:
+                continue
+            seen_names.add(name)
+
+            # Extract short name from FQCN
+            short_name = name.split(".")[-1] if "." in name else name
+
+            filters[name] = {
+                "short_name": short_name,
+                "aliases": list(wrapper.ansible_aliases) if wrapper.ansible_aliases else [],
+                "type": "ansible",
+                "allow_extras": getattr(wrapper, "allow_extras", False),
             }
 
     except ImportError as e:
-        print(f"Warning: Could not import Ansible: {e}", file=sys.stderr)
-        # Fallback to static keywords from ansible_keywords.py
+        print(f"Warning: Could not import filter_loader: {e}", file=sys.stderr)
+        used_fallback = True
+
+    # Jinja2 builtin filters
+    try:
+        from jinja2 import Environment
+
+        env = Environment()
+        for name in env.filters:
+            if f"ansible.builtin.{name}" not in filters:
+                filters[f"jinja2.{name}"] = {
+                    "short_name": name,
+                    "aliases": [],
+                    "type": "jinja2_builtin",
+                }
+
+    except ImportError:
+        used_fallback = True
+
+    # Static fallback if neither Ansible nor Jinja2 available
+    if used_fallback and not filters:
+        try:
+            from ansible_ls.utils.jinja_fallbacks import JINJA_FILTERS
+
+            for name, info in JINJA_FILTERS.items():
+                filters[f"fallback.{name}"] = {
+                    "short_name": info.name,
+                    "aliases": [],
+                    "type": f"{info.source}_fallback",
+                    "description": info.description,
+                }
+        except ImportError:
+            print("Warning: Static filter fallback not available", file=sys.stderr)
+
+    return filters
+
+
+def extract_jinja_tests() -> dict[str, dict[str, Any]]:
+    """Extract Jinja2 tests from Ansible and builtin Jinja2."""
+    tests: dict[str, dict[str, Any]] = {}
+    used_fallback = False
+
+    # Ansible tests via loader
+    try:
+        from ansible.plugins.loader import test_loader
+
+        seen_names: set[str] = set()
+        for wrapper in test_loader.all():
+            name = wrapper.ansible_name
+            if name in seen_names:
+                continue
+            seen_names.add(name)
+
+            short_name = name.split(".")[-1] if "." in name else name
+
+            tests[name] = {
+                "short_name": short_name,
+                "aliases": list(wrapper.ansible_aliases) if wrapper.ansible_aliases else [],
+                "type": "ansible",
+            }
+
+    except ImportError as e:
+        print(f"Warning: Could not import test_loader: {e}", file=sys.stderr)
+        used_fallback = True
+
+    # Jinja2 builtin tests
+    try:
+        from jinja2 import Environment
+
+        env = Environment()
+        for name in env.tests:
+            if f"ansible.builtin.{name}" not in tests:
+                tests[f"jinja2.{name}"] = {
+                    "short_name": name,
+                    "aliases": [],
+                    "type": "jinja2_builtin",
+                }
+
+    except ImportError:
+        used_fallback = True
+
+    # Static fallback if neither Ansible nor Jinja2 available
+    if used_fallback and not tests:
+        try:
+            from ansible_ls.utils.jinja_fallbacks import JINJA_TESTS
+
+            for name, info in JINJA_TESTS.items():
+                tests[f"fallback.{name}"] = {
+                    "short_name": info.name,
+                    "aliases": [],
+                    "type": f"{info.source}_fallback",
+                    "description": info.description,
+                }
+        except ImportError:
+            print("Warning: Static test fallback not available", file=sys.stderr)
+
+    return tests
+
+
+def extract_lookups() -> dict[str, dict[str, Any]]:
+    """Extract lookup plugins with their option metadata."""
+    lookups: dict[str, dict[str, Any]] = {}
+
+    try:
+        from ansible.plugins.loader import lookup_loader
+
+        for wrapper in lookup_loader.all():
+            name = wrapper.ansible_name
+            short_name = name.split(".")[-1] if "." in name else name
+
+            # Extract option definitions
+            options = {}
+            opt_defs = getattr(wrapper, "option_definitions", None)
+            if opt_defs:
+                for opt_name, opt_meta in opt_defs.items():
+                    options[opt_name] = {
+                        "description": opt_meta.get("description", ""),
+                        "type": opt_meta.get("type", "string"),
+                        "required": opt_meta.get("required", False),
+                        "default": _serialize_default(opt_meta.get("default")),
+                        "choices": opt_meta.get("choices"),
+                    }
+
+            lookups[name] = {
+                "short_name": short_name,
+                "aliases": list(wrapper.ansible_aliases) if wrapper.ansible_aliases else [],
+                "options": options,
+                "lazy_eval": getattr(wrapper, "accept_lazy_markers", False),
+            }
+
+    except ImportError as e:
+        print(f"Warning: Could not import lookup_loader: {e}", file=sys.stderr)
+
+        # Static fallback for lookup names
+        try:
+            from ansible_ls.utils.jinja_fallbacks import LOOKUP_NAMES
+
+            for name in LOOKUP_NAMES:
+                lookups[f"ansible.builtin.{name}"] = {
+                    "short_name": name,
+                    "aliases": [],
+                    "options": {},
+                    "lazy_eval": False,
+                }
+        except ImportError:
+            print("Warning: Static lookup fallback not available", file=sys.stderr)
+
+    return lookups
+
+
+def extract_magic_variables() -> dict[str, dict[str, str]]:
+    """Return documented magic variables (these are hardcoded, not from API)."""
+    return {
+        # Host/inventory scope
+        "inventory_hostname": {
+            "scope": "host",
+            "description": "Full hostname from inventory",
+        },
+        "inventory_hostname_short": {
+            "scope": "host",
+            "description": "Short hostname (before first dot)",
+        },
+        "inventory_dir": {
+            "scope": "global",
+            "description": "Directory containing the inventory file",
+        },
+        "inventory_file": {
+            "scope": "global",
+            "description": "Path to the inventory file",
+        },
+        "groups": {
+            "scope": "global",
+            "description": "Dict of all groups and their hosts",
+        },
+        "group_names": {
+            "scope": "host",
+            "description": "List of groups the host belongs to",
+        },
+        "hostvars": {
+            "scope": "global",
+            "description": "Dict of all host variables",
+        },
+        # Connection variables
+        "ansible_host": {
+            "scope": "host",
+            "description": "Target host address",
+        },
+        "ansible_port": {
+            "scope": "host",
+            "description": "Target connection port",
+        },
+        "ansible_user": {
+            "scope": "host",
+            "description": "Target user for connection",
+        },
+        "ansible_connection": {
+            "scope": "host",
+            "description": "Connection plugin name",
+        },
+        "ansible_ssh_private_key_file": {
+            "scope": "host",
+            "description": "SSH private key file path",
+        },
+        "ansible_become": {
+            "scope": "task",
+            "description": "Whether privilege escalation is enabled",
+        },
+        "ansible_become_user": {
+            "scope": "task",
+            "description": "User to escalate to",
+        },
+        "ansible_become_method": {
+            "scope": "task",
+            "description": "Privilege escalation method (sudo, su, etc.)",
+        },
+        # Play context
+        "ansible_check_mode": {
+            "scope": "play",
+            "description": "True if running in check mode",
+        },
+        "ansible_diff_mode": {
+            "scope": "play",
+            "description": "True if running in diff mode",
+        },
+        "ansible_verbosity": {
+            "scope": "play",
+            "description": "Current verbosity level",
+        },
+        "play_hosts": {
+            "scope": "play",
+            "description": "List of hosts in current play",
+        },
+        "ansible_play_hosts": {
+            "scope": "play",
+            "description": "Same as play_hosts",
+        },
+        "ansible_play_hosts_all": {
+            "scope": "play",
+            "description": "All hosts in play, even failed",
+        },
+        "ansible_play_batch": {
+            "scope": "play",
+            "description": "Hosts in current batch (serial)",
+        },
+        "ansible_play_name": {
+            "scope": "play",
+            "description": "Name of the current play",
+        },
+        # Role context
+        "ansible_role_name": {
+            "scope": "role",
+            "description": "Name of currently executing role",
+        },
+        "role_name": {
+            "scope": "role",
+            "description": "Same as ansible_role_name",
+        },
+        "role_path": {
+            "scope": "role",
+            "description": "Path to current role directory",
+        },
+        # Loop variables
+        "item": {
+            "scope": "loop",
+            "description": "Current loop item",
+        },
+        "ansible_loop_var": {
+            "scope": "loop",
+            "description": "Name of the loop variable",
+        },
+        "ansible_index_var": {
+            "scope": "loop",
+            "description": "Name of loop index variable",
+        },
+        "ansible_loop": {
+            "scope": "loop",
+            "description": "Extended loop info (index, first, last, etc.)",
+        },
+        # Task result access
+        "ansible_facts": {
+            "scope": "host",
+            "description": "Facts gathered for the host",
+        },
+        "ansible_local": {
+            "scope": "host",
+            "description": "Local facts from /etc/ansible/facts.d",
+        },
+        # Execution context
+        "ansible_version": {
+            "scope": "global",
+            "description": "Dict with Ansible version info",
+        },
+        "playbook_dir": {
+            "scope": "global",
+            "description": "Directory containing the playbook",
+        },
+        "ansible_config_file": {
+            "scope": "global",
+            "description": "Path to ansible.cfg in use",
+        },
+    }
+
+
+def extract_callback_plugins() -> dict[str, dict[str, Any]]:
+    """Extract callback plugin names (for advanced grammar support)."""
+    callbacks: dict[str, dict[str, Any]] = {}
+
+    try:
+        from ansible.plugins.loader import callback_loader
+
+        for wrapper in callback_loader.all():
+            name = wrapper.ansible_name
+            short_name = name.split(".")[-1] if "." in name else name
+
+            callbacks[name] = {
+                "short_name": short_name,
+                "aliases": list(wrapper.ansible_aliases) if wrapper.ansible_aliases else [],
+            }
+
+    except ImportError:
+        pass
+
+    return callbacks
+
+
+def _serialize_default(value: Any) -> Any:
+    """Serialize default values to JSON-safe types."""
+    if value is None:
+        return None
+    if callable(value):
+        return f"<callable: {value.__name__}>"
+    if isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (list, tuple)):
+        return [_serialize_default(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _serialize_default(v) for k, v in value.items()}
+    return repr(value)
+
+
+def _static_keyword_fallback() -> dict[str, list[str]]:
+    """Fallback to static keywords when Ansible not available."""
+    try:
         from ansible_ls.utils.ansible_keywords import (
             PLAY_KEYWORDS,
             TASK_KEYWORDS,
@@ -678,21 +2119,64 @@ def extract_keywords() -> dict:
             ROLE_KEYWORDS,
         )
 
-        keywords["play"] = list(PLAY_KEYWORDS.keys())
-        keywords["task"] = list(TASK_KEYWORDS.keys())
-        keywords["block"] = list(BLOCK_KEYWORDS.keys())
-        keywords["role"] = list(ROLE_KEYWORDS.keys())
+        return {
+            "play": list(PLAY_KEYWORDS.keys()),
+            "task": list(TASK_KEYWORDS.keys()),
+            "block": list(BLOCK_KEYWORDS.keys()),
+            "role": list(ROLE_KEYWORDS.keys()),
+        }
+    except ImportError:
+        # Minimal fallback
+        return {
+            "play": ["name", "hosts", "tasks", "vars", "roles", "become", "gather_facts"],
+            "task": ["name", "register", "when", "loop", "notify", "tags", "become"],
+            "block": ["name", "block", "rescue", "always", "when", "become"],
+            "role": ["name", "role", "when", "tags", "become"],
+        }
 
-    return keywords
 
+def main() -> None:
+    """Extract all Ansible metadata and output as JSON."""
+    metadata = {
+        "keywords": extract_keywords(),
+        "keyword_metadata": extract_keyword_metadata(),
+        "jinja_filters": extract_jinja_filters(),
+        "jinja_tests": extract_jinja_tests(),
+        "lookups": extract_lookups(),
+        "magic_variables": extract_magic_variables(),
+        "callbacks": extract_callback_plugins(),
+    }
 
-def main():
-    """Output keywords as JSON."""
-    keywords = extract_keywords()
-    output = Path("build/keywords.json")
+    # Summary statistics
+    stats = {
+        "play_keywords": len(metadata["keywords"]["play"]),
+        "task_keywords": len(metadata["keywords"]["task"]),
+        "block_keywords": len(metadata["keywords"]["block"]),
+        "role_keywords": len(metadata["keywords"]["role"]),
+        "jinja_filters": len(metadata["jinja_filters"]),
+        "jinja_tests": len(metadata["jinja_tests"]),
+        "lookups": len(metadata["lookups"]),
+        "magic_variables": len(metadata["magic_variables"]),
+        "callbacks": len(metadata["callbacks"]),
+    }
+    metadata["_stats"] = stats
+
+    # Get Ansible version if available
+    try:
+        from ansible.release import __version__ as ansible_version
+
+        metadata["_ansible_version"] = ansible_version
+    except ImportError:
+        metadata["_ansible_version"] = "unknown"
+
+    output = Path("build/ansible_metadata.json")
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(keywords, indent=2))
-    print(f"Wrote {len(keywords['task'])} task keywords to {output}")
+    output.write_text(json.dumps(metadata, indent=2, sort_keys=True))
+
+    print(f"Extracted metadata from Ansible {metadata['_ansible_version']}:")
+    for key, count in stats.items():
+        print(f"  {key}: {count}")
+    print(f"\nWrote to {output}")
 
 
 if __name__ == "__main__":
@@ -701,142 +2185,508 @@ if __name__ == "__main__":
 
 ***** Grammar Composition Script
 
-#+begin_src python :tangle tools/compose_grammar.py :mkdirp t
-"""Compose tree-sitter grammar from base grammars and keywords.
+The grammar composition script generates a tree-sitter grammar that includes:
+- Play/task/block/role keywords for structural recognition
+- Jinja2 filter and test names for expression parsing
+- Lookup plugin names for template validation
+- Magic variable names for completion/validation
 
-Merges tree-sitter-yaml and tree-sitter-jinja2 grammars with
-Ansible-specific rules and injected keywords.
+#+begin_src python :tangle tools/compose_grammar.py :mkdirp t
+"""Compose tree-sitter grammar from Ansible metadata.
+
+Generates a tree-sitter-ansible grammar.js that extends tree-sitter-yaml
+with Ansible-specific rules and Jinja2 expression support. Keywords,
+filters, tests, and lookups are injected from extracted metadata.
+
+Usage:
+    python tools/extract_keywords.py  # First, extract metadata
+    python tools/compose_grammar.py   # Then, generate grammar
 """
 
 import json
 from pathlib import Path
-from string import Template
+from textwrap import dedent
 
 
-GRAMMAR_TEMPLATE = Template('''
-/**
- * tree-sitter-ansible grammar
- * Auto-generated from Ansible ${ansible_version}
- */
-
-module.exports = grammar(require('tree-sitter-yaml/grammar'), {
-  name: 'ansible',
-
-  externals: ($, original) => original.concat([
-    // Jinja2 delimiters
-    $._jinja_start,
-    $._jinja_end,
-  ]),
-
-  rules: {
-    // Ansible-specific rules
-    playbook: $ => repeat($.play),
-
-    play: $ => seq(
-      $.block_mapping,
-      // Must have hosts
-      alias($.hosts_directive, $.play_hosts),
-    ),
-
-    hosts_directive: $ => seq(
-      'hosts', ':', $._flow_value
-    ),
-
-    task: $ => prec.right(seq(
-      $.block_mapping_pair,
-      // Module invocation (the non-keyword key)
-      field('module', $.module_invocation),
-    )),
-
-    module_invocation: $ => seq(
-      field('name', $.module_name),
-      ':',
-      optional($._block_node),
-    ),
-
-    module_name: $ => choice(
-      // Short name
-      /[a-z_][a-z0-9_]*/,
-      // FQCN
-      /[a-z_][a-z0-9_]*\\.[a-z_][a-z0-9_]*\\.[a-z_][a-z0-9_]*/,
-    ),
-
-    // Jinja2 expressions in strings
-    jinja_expression: $ => seq(
-      '{{',
-      repeat(choice(
-        $.variable_ref,
-        $.filter_chain,
-        /[^}]+/,
-      )),
-      '}}',
-    ),
-
-    variable_ref: $ => /[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*/,
-
-    filter_chain: $ => seq(
-      $._jinja_value,
-      repeat1(seq('|', $.filter_name)),
-    ),
-
-    filter_name: $ => /[a-z_][a-z0-9_]*/,
-
-    // Keyword choices (injected)
-    play_keyword: $ => choice(${play_keywords}),
-    task_keyword: $ => choice(${task_keywords}),
-    block_keyword: $ => choice(${block_keywords}),
-    role_keyword: $ => choice(${role_keywords}),
-  },
-});
-''')
+def load_metadata(path: Path) -> dict:
+    """Load extracted Ansible metadata from JSON."""
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path} not found. Run extract_keywords.py first."
+        )
+    return json.loads(path.read_text())
 
 
-def compose_grammar(keywords_path: Path) -> str:
-    """Generate grammar.js from keywords."""
-    keywords = json.loads(keywords_path.read_text())
+def quote_items(items: list[str], max_per_line: int = 8) -> str:
+    """Format a list of items as quoted JS strings with line wrapping."""
+    quoted = [f"'{item}'" for item in sorted(set(items))]
+    if len(quoted) <= max_per_line:
+        return ", ".join(quoted)
 
-    def quote_keywords(kw_list: list) -> str:
-        return ", ".join(f"'{kw}'" for kw in sorted(kw_list))
+    # Wrap long lists for readability
+    lines = []
+    for i in range(0, len(quoted), max_per_line):
+        chunk = quoted[i : i + max_per_line]
+        lines.append("      " + ", ".join(chunk) + ",")
 
-    return GRAMMAR_TEMPLATE.substitute(
-        ansible_version="2.16+",  # TODO: detect dynamically
-        play_keywords=quote_keywords(keywords["play"]),
-        task_keywords=quote_keywords(keywords["task"]),
-        block_keywords=quote_keywords(keywords["block"]),
-        role_keywords=quote_keywords(keywords["role"]),
-    )
+    return "\n" + "\n".join(lines) + "\n    "
 
 
-def main():
-    """Generate grammar.js."""
-    keywords_path = Path("build/keywords.json")
-    if not keywords_path.exists():
-        print("Run extract_keywords.py first")
+def extract_short_names(metadata_dict: dict, key: str = "short_name") -> list[str]:
+    """Extract short names from a metadata dictionary."""
+    names = []
+    for item in metadata_dict.values():
+        if isinstance(item, dict) and key in item:
+            names.append(item[key])
+        # Also add aliases
+        if isinstance(item, dict) and "aliases" in item:
+            names.extend(item["aliases"])
+    return names
+
+
+def generate_grammar(metadata: dict) -> str:
+    """Generate the complete grammar.js content."""
+    # Extract keyword lists
+    keywords = metadata.get("keywords", {})
+    play_kw = quote_items(keywords.get("play", []))
+    task_kw = quote_items(keywords.get("task", []))
+    block_kw = quote_items(keywords.get("block", []))
+    role_kw = quote_items(keywords.get("role", []))
+
+    # Extract Jinja2 filter and test names (short names for matching)
+    filters = metadata.get("jinja_filters", {})
+    filter_names = extract_short_names(filters)
+    filter_names_js = quote_items(filter_names)
+
+    tests = metadata.get("jinja_tests", {})
+    test_names = extract_short_names(tests)
+    test_names_js = quote_items(test_names)
+
+    # Extract lookup names
+    lookups = metadata.get("lookups", {})
+    lookup_names = extract_short_names(lookups)
+    lookup_names_js = quote_items(lookup_names)
+
+    # Extract magic variable names
+    magic_vars = metadata.get("magic_variables", {})
+    magic_var_names = list(magic_vars.keys())
+    magic_vars_js = quote_items(magic_var_names)
+
+    # Get Ansible version for documentation
+    ansible_version = metadata.get("_ansible_version", "unknown")
+
+    return dedent(f'''\
+    /**
+     * tree-sitter-ansible grammar
+     * Auto-generated from Ansible {ansible_version}
+     *
+     * This grammar extends tree-sitter-yaml with Ansible-specific rules.
+     * Keywords, filters, tests, and lookups are extracted from Ansible source.
+     *
+     * DO NOT EDIT MANUALLY - regenerate with:
+     *   python tools/extract_keywords.py && python tools/compose_grammar.py
+     */
+
+    module.exports = grammar(require('tree-sitter-yaml/grammar'), {{
+      name: 'ansible',
+
+      // Conflict resolution
+      conflicts: $ => [
+        [$.jinja_expression, $.double_quote_scalar],
+      ],
+
+      // External scanner for Jinja2 delimiters
+      externals: ($, original) => original.concat([
+        $._jinja_expr_start,   // {{{{
+        $._jinja_expr_end,     // }}}}
+        $._jinja_stmt_start,   // {{%
+        $._jinja_stmt_end,     // %}}
+        $._jinja_comment_start, // {{#
+        $._jinja_comment_end,   // #}}
+      ]),
+
+      rules: {{
+        // ========================================
+        // Ansible Playbook Structure
+        // ========================================
+
+        playbook: $ => repeat($.play),
+
+        play: $ => prec.right(seq(
+          $.block_mapping,
+          // A play must have 'hosts' key
+          field('hosts', $.hosts_directive),
+          repeat(choice(
+            $.play_keyword_pair,
+            $.tasks_section,
+            $.handlers_section,
+            $.roles_section,
+            $.vars_section,
+          )),
+        )),
+
+        hosts_directive: $ => seq(
+          alias('hosts', $.keyword),
+          ':',
+          $._flow_value,
+        ),
+
+        tasks_section: $ => seq(
+          alias(choice('tasks', 'pre_tasks', 'post_tasks'), $.keyword),
+          ':',
+          $.block_sequence,
+        ),
+
+        handlers_section: $ => seq(
+          alias('handlers', $.keyword),
+          ':',
+          $.block_sequence,
+        ),
+
+        roles_section: $ => seq(
+          alias('roles', $.keyword),
+          ':',
+          $.block_sequence,
+        ),
+
+        vars_section: $ => seq(
+          alias(choice('vars', 'vars_files', 'vars_prompt'), $.keyword),
+          ':',
+          $._block_node,
+        ),
+
+        // ========================================
+        // Task Structure
+        // ========================================
+
+        task: $ => prec.right(seq(
+          $.block_mapping,
+          optional(field('name', $.name_directive)),
+          field('module', $.module_invocation),
+          repeat($.task_keyword_pair),
+        )),
+
+        name_directive: $ => seq(
+          alias('name', $.keyword),
+          ':',
+          $._flow_value,
+        ),
+
+        module_invocation: $ => seq(
+          field('module_name', $.module_name),
+          ':',
+          optional($._block_node),
+        ),
+
+        module_name: $ => choice(
+          // Short module name: debug, copy, file, etc.
+          /[a-z_][a-z0-9_]*/,
+          // FQCN: ansible.builtin.debug, community.general.foo
+          seq(
+            field('namespace', /[a-z_][a-z0-9_]*/),
+            '.',
+            field('collection', /[a-z_][a-z0-9_]*/),
+            '.',
+            field('name', /[a-z_][a-z0-9_]*/),
+          ),
+        ),
+
+        // Block structure (block/rescue/always)
+        block_structure: $ => seq(
+          alias('block', $.keyword),
+          ':',
+          $.block_sequence,
+          optional(seq(
+            alias('rescue', $.keyword),
+            ':',
+            $.block_sequence,
+          )),
+          optional(seq(
+            alias('always', $.keyword),
+            ':',
+            $.block_sequence,
+          )),
+        ),
+
+        // ========================================
+        // Jinja2 Expressions
+        // ========================================
+
+        jinja_expression: $ => seq(
+          '{{{{',
+          repeat(choice(
+            $.jinja_variable,
+            $.jinja_filter_chain,
+            $.jinja_test_expression,
+            $.jinja_literal,
+            $.jinja_operator,
+            /[^{{}}|]+/,
+          )),
+          '}}}}',
+        ),
+
+        jinja_statement: $ => seq(
+          '{{%',
+          choice(
+            $.jinja_for,
+            $.jinja_if,
+            $.jinja_set,
+            $.jinja_block,
+            $.jinja_macro,
+            /[^%]+/,
+          ),
+          '%}}',
+        ),
+
+        jinja_comment: $ => seq(
+          '{{#',
+          /[^#]*/,
+          '#}}',
+        ),
+
+        jinja_variable: $ => prec.left(seq(
+          $.jinja_identifier,
+          repeat(choice(
+            seq('.', $.jinja_identifier),          // dot access: foo.bar
+            seq('[', $._jinja_value, ']'),         // bracket access: foo["bar"]
+          )),
+        )),
+
+        jinja_filter_chain: $ => prec.left(seq(
+          $._jinja_value,
+          repeat1(seq(
+            '|',
+            $.jinja_filter,
+            optional($.jinja_filter_args),
+          )),
+        )),
+
+        jinja_filter: $ => choice({filter_names_js}),
+
+        jinja_filter_args: $ => seq(
+          '(',
+          optional(seq(
+            $._jinja_value,
+            repeat(seq(',', $._jinja_value)),
+          )),
+          ')',
+        ),
+
+        jinja_test_expression: $ => seq(
+          $._jinja_value,
+          'is',
+          optional('not'),
+          $.jinja_test,
+          optional($.jinja_test_args),
+        ),
+
+        jinja_test: $ => choice({test_names_js}),
+
+        jinja_test_args: $ => seq(
+          '(',
+          optional(seq(
+            $._jinja_value,
+            repeat(seq(',', $._jinja_value)),
+          )),
+          ')',
+        ),
+
+        // Jinja control structures
+        jinja_for: $ => seq(
+          'for',
+          $.jinja_identifier,
+          optional(seq(',', $.jinja_identifier)),  // for k, v in
+          'in',
+          $._jinja_value,
+          optional(seq('if', $._jinja_value)),     // conditional loop
+          optional('recursive'),
+        ),
+
+        jinja_if: $ => seq(
+          choice('if', 'elif', 'else', 'endif'),
+          optional($._jinja_value),
+        ),
+
+        jinja_set: $ => seq(
+          'set',
+          $.jinja_identifier,
+          '=',
+          $._jinja_value,
+        ),
+
+        jinja_block: $ => seq(
+          choice('block', 'endblock'),
+          optional($.jinja_identifier),
+        ),
+
+        jinja_macro: $ => seq(
+          choice('macro', 'endmacro', 'call', 'endcall'),
+          optional($.jinja_identifier),
+          optional($.jinja_filter_args),
+        ),
+
+        jinja_lookup: $ => seq(
+          'lookup',
+          '(',
+          $.jinja_lookup_plugin,
+          ',',
+          $._jinja_value,
+          repeat(seq(',', $.jinja_kwarg)),
+          ')',
+        ),
+
+        jinja_lookup_plugin: $ => choice({lookup_names_js}),
+
+        jinja_kwarg: $ => seq(
+          $.jinja_identifier,
+          '=',
+          $._jinja_value,
+        ),
+
+        _jinja_value: $ => choice(
+          $.jinja_variable,
+          $.jinja_literal,
+          $.jinja_list,
+          $.jinja_dict,
+          $.jinja_lookup,
+          seq('(', $._jinja_value, ')'),
+        ),
+
+        jinja_identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/,
+
+        jinja_literal: $ => choice(
+          $.jinja_string,
+          $.jinja_number,
+          $.jinja_boolean,
+          'none',
+        ),
+
+        jinja_string: $ => choice(
+          seq("'", /[^']*/, "'"),
+          seq('"', /[^"]*/, '"'),
+        ),
+
+        jinja_number: $ => /[+-]?\\d+(\\.\\d+)?([eE][+-]?\\d+)?/,
+
+        jinja_boolean: $ => choice('true', 'false', 'True', 'False'),
+
+        jinja_list: $ => seq(
+          '[',
+          optional(seq(
+            $._jinja_value,
+            repeat(seq(',', $._jinja_value)),
+          )),
+          ']',
+        ),
+
+        jinja_dict: $ => seq(
+          '{{',
+          optional(seq(
+            $.jinja_dict_pair,
+            repeat(seq(',', $.jinja_dict_pair)),
+          )),
+          '}}',
+        ),
+
+        jinja_dict_pair: $ => seq(
+          choice($.jinja_string, $.jinja_identifier),
+          ':',
+          $._jinja_value,
+        ),
+
+        jinja_operator: $ => choice(
+          '+', '-', '*', '/', '//', '%', '**',     // arithmetic
+          '==', '!=', '<', '>', '<=', '>=',        // comparison
+          'and', 'or', 'not',                      // logical
+          'in', 'not in', 'is', 'is not',          // membership/identity
+          '~',                                      // concatenation
+        ),
+
+        // ========================================
+        // Magic Variables (for highlighting/completion)
+        // ========================================
+
+        magic_variable: $ => choice({magic_vars_js}),
+
+        // ========================================
+        // Keywords (for structural recognition)
+        // ========================================
+
+        play_keyword: $ => choice({play_kw}),
+
+        task_keyword: $ => choice({task_kw}),
+
+        block_keyword: $ => choice({block_kw}),
+
+        role_keyword: $ => choice({role_kw}),
+
+        play_keyword_pair: $ => seq(
+          $.play_keyword,
+          ':',
+          $._block_node,
+        ),
+
+        task_keyword_pair: $ => seq(
+          $.task_keyword,
+          ':',
+          $._block_node,
+        ),
+      }},
+    }});
+    ''')
+
+
+def main() -> int:
+    """Generate grammar.js from extracted metadata."""
+    metadata_path = Path("build/ansible_metadata.json")
+
+    try:
+        metadata = load_metadata(metadata_path)
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+        print("Run: python tools/extract_keywords.py")
         return 1
 
-    grammar = compose_grammar(keywords_path)
+    grammar = generate_grammar(metadata)
+
     output = Path("tree-sitter-ansible/grammar.js")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(grammar)
-    print(f"Wrote grammar to {output}")
+
+    # Print statistics
+    stats = metadata.get("_stats", {})
+    print(f"Generated grammar from Ansible {metadata.get('_ansible_version', 'unknown')}:")
+    print(f"  - {stats.get('play_keywords', 0)} play keywords")
+    print(f"  - {stats.get('task_keywords', 0)} task keywords")
+    print(f"  - {stats.get('jinja_filters', 0)} Jinja2 filters")
+    print(f"  - {stats.get('jinja_tests', 0)} Jinja2 tests")
+    print(f"  - {stats.get('lookups', 0)} lookup plugins")
+    print(f"  - {stats.get('magic_variables', 0)} magic variables")
+    print(f"\nWrote grammar to {output}")
+
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
 #+end_src
 
 **** Tests: Grammar Validation
 
-***** Unit Tests for Keyword Extraction
+***** Unit Tests for Metadata Extraction
 
 #+begin_src python :tangle tests/tools/test_extract_keywords.py :mkdirp t
-"""Tests for keyword extraction."""
+"""Tests for Ansible metadata extraction.
+
+These tests verify that we can extract keywords, filters, tests,
+lookups, and other metadata from Ansible source.
+"""
 
 import pytest
 
 
 class TestKeywordExtraction:
-    """Test keyword extraction from Ansible source."""
+    """Test keyword extraction from Ansible fattributes."""
 
     def test_play_keywords_include_hosts(self):
         """Hosts is a required play keyword."""
@@ -859,6 +2709,13 @@ class TestKeywordExtraction:
         keywords = extract_keywords()
         assert "register" in keywords["task"]
 
+    def test_task_keywords_include_when(self):
+        """When is the primary conditional keyword."""
+        from tools.extract_keywords import extract_keywords
+
+        keywords = extract_keywords()
+        assert "when" in keywords["task"]
+
     def test_block_keywords_include_rescue(self):
         """Rescue is block-specific for error handling."""
         from tools.extract_keywords import extract_keywords
@@ -866,19 +2723,260 @@ class TestKeywordExtraction:
         keywords = extract_keywords()
         assert "rescue" in keywords["block"]
 
+    def test_block_keywords_include_always(self):
+        """Always is block-specific for cleanup."""
+        from tools.extract_keywords import extract_keywords
+
+        keywords = extract_keywords()
+        assert "always" in keywords["block"]
+
+    def test_role_keywords_exist(self):
+        """Role keywords should be extracted."""
+        from tools.extract_keywords import extract_keywords
+
+        keywords = extract_keywords()
+        assert len(keywords["role"]) > 0
+
     def test_fallback_when_ansible_unavailable(self, monkeypatch):
         """Should use static fallback if Ansible import fails."""
         import sys
 
-        # Block ansible imports
+        # Block ansible imports by replacing with None
         monkeypatch.setitem(sys.modules, "ansible", None)
         monkeypatch.setitem(sys.modules, "ansible.playbook", None)
+        monkeypatch.setitem(sys.modules, "ansible.playbook.play", None)
 
-        from tools.extract_keywords import extract_keywords
+        # Need to reimport after blocking
+        import importlib
+        import tools.extract_keywords as module
 
-        keywords = extract_keywords()
+        importlib.reload(module)
+
+        keywords = module.extract_keywords()
         # Should still have keywords from static fallback
         assert len(keywords["task"]) > 0
+        assert "name" in keywords["task"]
+
+
+class TestJinjaFilterExtraction:
+    """Test Jinja2 filter extraction from Ansible."""
+
+    def test_extracts_ansible_filters(self):
+        """Should extract Ansible-provided filters."""
+        from tools.extract_keywords import extract_jinja_filters
+
+        filters = extract_jinja_filters()
+        # Check for common Ansible filters
+        filter_short_names = {
+            f.get("short_name") for f in filters.values()
+        }
+        assert "b64encode" in filter_short_names
+        assert "to_json" in filter_short_names
+        assert "to_yaml" in filter_short_names
+
+    def test_extracts_jinja2_builtin_filters(self):
+        """Should include Jinja2 builtin filters."""
+        from tools.extract_keywords import extract_jinja_filters
+
+        filters = extract_jinja_filters()
+        filter_short_names = {
+            f.get("short_name") for f in filters.values()
+        }
+        # Common Jinja2 filters
+        assert "upper" in filter_short_names
+        assert "lower" in filter_short_names
+        assert "join" in filter_short_names
+
+    def test_filter_has_metadata(self):
+        """Each filter should have required metadata."""
+        from tools.extract_keywords import extract_jinja_filters
+
+        filters = extract_jinja_filters()
+        for name, meta in filters.items():
+            assert "short_name" in meta, f"{name} missing short_name"
+            assert "type" in meta, f"{name} missing type"
+            assert meta["type"] in ("ansible", "jinja2_builtin")
+
+
+class TestJinjaTestExtraction:
+    """Test Jinja2 test extraction from Ansible."""
+
+    def test_extracts_ansible_tests(self):
+        """Should extract Ansible-provided tests."""
+        from tools.extract_keywords import extract_jinja_tests
+
+        tests = extract_jinja_tests()
+        test_short_names = {t.get("short_name") for t in tests.values()}
+        # Task status tests
+        assert "failed" in test_short_names
+        assert "succeeded" in test_short_names or "success" in test_short_names
+        assert "changed" in test_short_names
+
+    def test_extracts_jinja2_builtin_tests(self):
+        """Should include Jinja2 builtin tests."""
+        from tools.extract_keywords import extract_jinja_tests
+
+        tests = extract_jinja_tests()
+        test_short_names = {t.get("short_name") for t in tests.values()}
+        # Common Jinja2 tests
+        assert "defined" in test_short_names
+        assert "none" in test_short_names
+        assert "string" in test_short_names
+
+    def test_test_has_metadata(self):
+        """Each test should have required metadata."""
+        from tools.extract_keywords import extract_jinja_tests
+
+        tests = extract_jinja_tests()
+        for name, meta in tests.items():
+            assert "short_name" in meta, f"{name} missing short_name"
+            assert "type" in meta, f"{name} missing type"
+
+
+class TestLookupExtraction:
+    """Test lookup plugin extraction from Ansible."""
+
+    def test_extracts_lookup_plugins(self):
+        """Should extract lookup plugins."""
+        from tools.extract_keywords import extract_lookups
+
+        lookups = extract_lookups()
+        lookup_short_names = {l.get("short_name") for l in lookups.values()}
+        # Common lookups
+        assert "file" in lookup_short_names
+        assert "env" in lookup_short_names
+        assert "template" in lookup_short_names
+
+    def test_lookup_has_options(self):
+        """Lookups should include option metadata when available."""
+        from tools.extract_keywords import extract_lookups
+
+        lookups = extract_lookups()
+        # At least some lookups should have options
+        has_options = any(
+            l.get("options") for l in lookups.values()
+        )
+        assert has_options, "Expected some lookups to have option metadata"
+
+    def test_lookup_option_structure(self):
+        """Lookup options should have consistent structure."""
+        from tools.extract_keywords import extract_lookups
+
+        lookups = extract_lookups()
+        for name, meta in lookups.items():
+            if meta.get("options"):
+                for opt_name, opt in meta["options"].items():
+                    # Options should have at least a description or type
+                    assert "description" in opt or "type" in opt, \
+                        f"{name}.{opt_name} missing description and type"
+
+
+class TestMagicVariableExtraction:
+    """Test magic variable list."""
+
+    def test_extracts_magic_variables(self):
+        """Should return magic variables with metadata."""
+        from tools.extract_keywords import extract_magic_variables
+
+        magic_vars = extract_magic_variables()
+        # Core magic variables
+        assert "inventory_hostname" in magic_vars
+        assert "hostvars" in magic_vars
+        assert "groups" in magic_vars
+        assert "item" in magic_vars
+
+    def test_magic_variable_has_scope(self):
+        """Each magic variable should have a scope."""
+        from tools.extract_keywords import extract_magic_variables
+
+        magic_vars = extract_magic_variables()
+        for name, meta in magic_vars.items():
+            assert "scope" in meta, f"{name} missing scope"
+            assert meta["scope"] in ("host", "global", "play", "task", "role", "loop")
+
+    def test_magic_variable_has_description(self):
+        """Each magic variable should have a description."""
+        from tools.extract_keywords import extract_magic_variables
+
+        magic_vars = extract_magic_variables()
+        for name, meta in magic_vars.items():
+            assert "description" in meta, f"{name} missing description"
+            assert len(meta["description"]) > 0
+
+
+class TestKeywordMetadataExtraction:
+    """Test detailed keyword metadata extraction."""
+
+    def test_extracts_keyword_metadata(self):
+        """Should extract detailed keyword metadata."""
+        from tools.extract_keywords import extract_keyword_metadata
+
+        metadata = extract_keyword_metadata()
+        # Check structure
+        assert "play" in metadata or len(metadata) == 0  # May be empty if no Ansible
+        assert "task" in metadata or len(metadata) == 0
+
+    def test_metadata_includes_isa(self):
+        """Keyword metadata should include type information."""
+        from tools.extract_keywords import extract_keyword_metadata
+
+        metadata = extract_keyword_metadata()
+        if metadata.get("task"):
+            # 'name' should be a string
+            name_meta = metadata["task"].get("name", {})
+            if name_meta:
+                assert "isa" in name_meta
+
+    def test_metadata_includes_required(self):
+        """Keyword metadata should include required flag."""
+        from tools.extract_keywords import extract_keyword_metadata
+
+        metadata = extract_keyword_metadata()
+        if metadata.get("play"):
+            # 'hosts' should be required in plays
+            hosts_meta = metadata["play"].get("hosts", {})
+            if hosts_meta:
+                assert "required" in hosts_meta
+
+
+class TestMainOutput:
+    """Test the main function output structure."""
+
+    def test_main_creates_complete_metadata(self, tmp_path, monkeypatch):
+        """Main should create a complete metadata JSON file."""
+        import json
+        from tools import extract_keywords
+
+        # Change to temp directory for output
+        monkeypatch.chdir(tmp_path)
+
+        # Run main
+        extract_keywords.main()
+
+        # Check output exists
+        output = tmp_path / "build" / "ansible_metadata.json"
+        assert output.exists()
+
+        # Check structure
+        metadata = json.loads(output.read_text())
+        assert "keywords" in metadata
+        assert "jinja_filters" in metadata
+        assert "jinja_tests" in metadata
+        assert "lookups" in metadata
+        assert "magic_variables" in metadata
+        assert "_stats" in metadata
+
+    def test_main_includes_version(self, tmp_path, monkeypatch):
+        """Main should include Ansible version in output."""
+        import json
+        from tools import extract_keywords
+
+        monkeypatch.chdir(tmp_path)
+        extract_keywords.main()
+
+        output = tmp_path / "build" / "ansible_metadata.json"
+        metadata = json.loads(output.read_text())
+        assert "_ansible_version" in metadata
 #+end_src
 
 ***** Integration Tests for Grammar Parsing
