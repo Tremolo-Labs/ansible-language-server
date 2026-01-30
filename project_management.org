@@ -1,0 +1,105 @@
+* Project Management
+:PROPERTIES:
+:VISIBILITY: folded
+:ID:       47687761-e532-460c-9bec-ea6a1708fd0a
+:END:
+
+** Status Dashboard
+:PROPERTIES:
+:ID:       f55cc7a6-9353-4160-ae7c-c0e93a059844
+:END:
+
+| Component             | Status  | Lines | Documentation             |
+|-----------------------+---------+-------+---------------------------|
+| *Utils*                 |         |       |                           |
+| [[file:src/ansible_ls/utils/ansible_keywords.py][ansible_keywords.py]]   | ✅ DONE | ~670  | [[id:ansible-keywords][Ansible Keywords]]          |
+| [[file:src/ansible_ls/utils/ansible_dynamic.py][ansible_dynamic.py]]    | ✅ DONE | ~260  | [[id:ansible-keywords][Ansible Keywords]]          |
+| [[file:src/ansible_ls/utils/yaml_utils.py][yaml_utils.py]]         | ✅ DONE | ~180  | [[id:yaml-parsing][YAML Parsing]]              |
+| docsParser.py         | TODO    | ~200  | [[id:documentation-library][Documentation Library]]     |
+| docsFinder.py         | TODO    | ~150  | [[id:documentation-library][Documentation Library]]     |
+| commandRunner.py      | TODO    | ~100  | [[id:external-tool-integration][External Tool Integration]] |
+|-----------------------+---------+-------+---------------------------|
+| *Models*                |         |       |                           |
+| [[file:src/ansible_ls/models/module.py][module.py]]             | ✅ DONE | ~70   | [[*Module Metadata][Module Metadata]]           |
+| settings.py           | TODO    | ~100  | [[*Extension Settings][Extension Settings]]        |
+|-----------------------+---------+-------+---------------------------|
+| *Services*              |         |       |                           |
+| settings_manager.py   | TODO    | ~150  | [[*Settings Service][Settings Service]]          |
+| workspace_manager.py  | TODO    | ~240  | [[*Workspace Service][Workspace Service]]         |
+| docs_library.py       | TODO    | ~275  | [[*Documentation Library][Documentation Library]]     |
+| validation_manager.py | TODO    | ~180  | [[*Validation Service][Validation Service]]        |
+| ansible_lint.py       | TODO    | ~200  | [[*Validation Service][Validation Service]]        |
+| execution_env.py      | TODO    | ~536  | [[*Container Management][Container Management]]      |
+|-----------------------+---------+-------+---------------------------|
+| *Providers*             |         |       |                           |
+| hover.py              | TODO    | ~150  | [[*Hover Provider][Hover Provider]]            |
+| definition.py         | TODO    | ~120  | [[*Definition Provider][Definition Provider]]       |
+| completion.py         | TODO    | ~666  | [[*Completion Provider][Completion Provider]]       |
+| validation.py         | TODO    | ~180  | [[*Validation Service][Validation Service]]        |
+| semantic_tokens.py    | TODO    | ~200  | (not yet documented)      |
+|-----------------------+---------+-------+---------------------------|
+| *Server*                |         |       |                           |
+| [[file:src/ansible_ls/server.py][server.py]]             | ✅ DONE | ~15   | [[*Server Entry Point][Server Entry Point]]        |
+
+*Tests:* 59 passing (27 dynamic keyword tests, 23 static keyword tests, 9 YAML utils tests)
+
+** TODO Progress
+:PROPERTIES:
+:ID:       042d8753-3757-48a6-b5a0-251196171795
+:END:
+
+*** Completed
+1. [X] Initialize Python project with =uv init= → [[*Project Configuration][Project Configuration]]
+2. [X] Research tree-sitter for YAML AST → [[*YAML Parsing][YAML Parsing]]
+3. [X] Research podman-py for container management → [[*Container Management][Container Management]]
+4. [X] Research Ansible Python APIs → [[*Ansible Keywords][Ansible Keywords]]
+5. [X] Fix pyproject.toml build-system → [[*Project Configuration][Project Configuration]]
+6. [X] Set up pytest infrastructure → [[*Test Infrastructure][Test Infrastructure]]
+7. [X] Port utils/ansible.ts keyword definitions → [[*Ansible Keywords][Ansible Keywords]]
+8. [X] Port interfaces/module.ts to dataclasses → [[*Module Metadata][Module Metadata]]
+9. [X] Port utils/yaml.ts using tree-sitter-yaml → [[*YAML Parsing][YAML Parsing]]
+
+*** In Progress
+10. [ ] Implement services
+    - [ ] [[*Settings Service][SettingsManager]] - settings caching and LSP config
+    - [ ] [[*Workspace Service][WorkspaceManager]] - multi-folder context
+    - [ ] [[*Documentation Library][DocsLibrary]] - module documentation cache
+    - [ ] [[*Validation Service][ValidationManager]] - ansible-lint integration
+
+11. [ ] Tangle and implement providers
+    - [ ] [[*Hover Provider][HoverProvider]] - keyword and module docs on hover
+    - [ ] [[*Definition Provider][DefinitionProvider]] - go-to-definition for roles/includes
+    - [ ] [[*Completion Provider][CompletionProvider]] - context-aware completions
+
+*** Completion Provider Checklist
+- [ ] Register completion provider with =@server.feature=
+- [ ] Implement context detection (play/task/block/role/module option)
+- [ ] Implement keyword completion for each context
+- [ ] Implement module name completion (FQCN + short names)
+- [ ] Implement module option completion with suboptions
+- [ ] Implement value completion (booleans, choices)
+- [ ] Handle trigger characters (=:=, =-=)
+- [ ] Implement completion resolve for lazy documentation
+- [ ] Write extensive tests with fixture playbooks
+
+** Porting Tiers
+
+| Tier | Focus            | Status | Key Files                                        |
+|------+------------------+--------+--------------------------------------------------|
+|    1 | Foundation       | DONE   | interfaces/module.ts, utils/ansible.ts           |
+|    2 | Core Utils       | DONE   | utils/yaml.ts                                    |
+|    3 | Services         | TODO   | settingsManager, workspaceManager, docsLibrary   |
+|    4 | Complex Services | TODO   | executionEnvironment.ts (536 lines)              |
+|    5 | Providers        | TODO   | completionProvider.ts (666 lines) \m/            |
+|    6 | LSP Core         | TODO   | ansibleLanguageService.ts, server.ts             |
+
+** Running Tests
+#+begin_src bash :results output :wrap example
+uv run pytest tests/ -v
+#+end_src
+
+#+RESULTS:
+#+begin_example
+#+end_example
+
+#+RESULTS:

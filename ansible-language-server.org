@@ -1,115 +1,5 @@
 * ansible language server
-** Project Management
-:PROPERTIES:
-:VISIBILITY: folded
-:END:
 
-*** Status Dashboard
-
-| Component              | Status  | Lines | Documentation                        |
-|------------------------+---------+-------+--------------------------------------|
-| *Utils*                |         |       |                                      |
-| [[file:src/ansible_ls/utils/ansible_keywords.py][ansible_keywords.py]]    | ✅ DONE | ~670  | [[*Ansible Keywords][Ansible Keywords]]                     |
-| [[file:src/ansible_ls/utils/ansible_dynamic.py][ansible_dynamic.py]]     | ✅ DONE | ~260  | [[*Ansible Keywords][Ansible Keywords]]                     |
-| [[file:src/ansible_ls/utils/yaml_utils.py][yaml_utils.py]]          | ✅ DONE | ~180  | [[*YAML Parsing][YAML Parsing]]                         |
-| docsParser.py          | TODO    | ~200  | [[*Documentation Library][Documentation Library]]                 |
-| docsFinder.py          | TODO    | ~150  | [[*Documentation Library][Documentation Library]]                 |
-| commandRunner.py       | TODO    | ~100  | [[*External Tool Integration][External Tool Integration]]             |
-|------------------------+---------+-------+--------------------------------------|
-| *Models*               |         |       |                                      |
-| [[file:src/ansible_ls/models/module.py][module.py]]              | ✅ DONE | ~70   | [[*Module Metadata][Module Metadata]]                      |
-| settings.py            | TODO    | ~100  | [[*Extension Settings][Extension Settings]]                   |
-|------------------------+---------+-------+--------------------------------------|
-| *Services*             |         |       |                                      |
-| settings_manager.py    | TODO    | ~150  | [[*Settings Service][Settings Service]]                     |
-| workspace_manager.py   | TODO    | ~240  | [[*Workspace Service][Workspace Service]]                    |
-| docs_library.py        | TODO    | ~275  | [[*Documentation Library][Documentation Library]]                 |
-| validation_manager.py  | TODO    | ~180  | [[*Validation Service][Validation Service]]                   |
-| ansible_lint.py        | TODO    | ~200  | [[*Validation Service][Validation Service]]                   |
-| execution_env.py       | TODO    | ~536  | [[*Container Management][Container Management]]                  |
-|------------------------+---------+-------+--------------------------------------|
-| *Providers*            |         |       |                                      |
-| hover.py               | TODO    | ~150  | [[*Hover Provider][Hover Provider]]                       |
-| definition.py          | TODO    | ~120  | [[*Definition Provider][Definition Provider]]                  |
-| completion.py          | TODO    | ~666  | [[*Completion Provider][Completion Provider]]                  |
-| validation.py          | TODO    | ~180  | [[*Validation Service][Validation Service]]                   |
-| semantic_tokens.py     | TODO    | ~200  | (not yet documented)                 |
-|------------------------+---------+-------+--------------------------------------|
-| *Server*               |         |       |                                      |
-| [[file:src/ansible_ls/server.py][server.py]]              | ✅ DONE | ~15   | [[*Server Entry Point][Server Entry Point]]                   |
-
-*Tests:* 59 passing (27 dynamic keyword tests, 23 static keyword tests, 9 YAML utils tests)
-
-*** TODO Progress
-:PROPERTIES:
-:ID:       042d8753-3757-48a6-b5a0-251196171795
-:END:
-
-**** Completed
-1. [X] Initialize Python project with =uv init= → [[*Project Configuration][Project Configuration]]
-2. [X] Research tree-sitter for YAML AST → [[*YAML Parsing][YAML Parsing]]
-3. [X] Research podman-py for container management → [[*Container Management][Container Management]]
-4. [X] Research Ansible Python APIs → [[*Ansible Keywords][Ansible Keywords]]
-5. [X] Fix pyproject.toml build-system → [[*Project Configuration][Project Configuration]]
-6. [X] Set up pytest infrastructure → [[*Test Infrastructure][Test Infrastructure]]
-7. [X] Port utils/ansible.ts keyword definitions → [[*Ansible Keywords][Ansible Keywords]]
-8. [X] Port interfaces/module.ts to dataclasses → [[*Module Metadata][Module Metadata]]
-9. [X] Port utils/yaml.ts using tree-sitter-yaml → [[*YAML Parsing][YAML Parsing]]
-
-**** In Progress
-10. [ ] Tangle and implement services (=C-c C-v t= in Emacs)
-    - [ ] [[*Settings Service][SettingsManager]] - settings caching and LSP config
-    - [ ] [[*Workspace Service][WorkspaceManager]] - multi-folder context
-    - [ ] [[*Documentation Library][DocsLibrary]] - module documentation cache
-    - [ ] [[*Validation Service][ValidationManager]] - ansible-lint integration
-
-11. [ ] Tangle and implement providers
-    - [ ] [[*Hover Provider][HoverProvider]] - keyword and module docs on hover
-    - [ ] [[*Definition Provider][DefinitionProvider]] - go-to-definition for roles/includes
-    - [ ] [[*Completion Provider][CompletionProvider]] - context-aware completions
-
-**** Completion Provider Checklist
-- [ ] Register completion provider with =@server.feature=
-- [ ] Implement context detection (play/task/block/role/module option)
-- [ ] Implement keyword completion for each context
-- [ ] Implement module name completion (FQCN + short names)
-- [ ] Implement module option completion with suboptions
-- [ ] Implement value completion (booleans, choices)
-- [ ] Handle trigger characters (=:=, =-=)
-- [ ] Implement completion resolve for lazy documentation
-- [ ] Write extensive tests with fixture playbooks
-
-*** Porting Tiers
-
-| Tier | Focus            | Status | Key Files                                        |
-|------+------------------+--------+--------------------------------------------------|
-|    1 | Foundation       | DONE   | interfaces/module.ts, utils/ansible.ts           |
-|    2 | Core Utils       | DONE   | utils/yaml.ts                                    |
-|    3 | Services         | TODO   | settingsManager, workspaceManager, docsLibrary   |
-|    4 | Complex Services | TODO   | executionEnvironment.ts (536 lines)              |
-|    5 | Providers        | TODO   | completionProvider.ts (666 lines) \m/            |
-|    6 | LSP Core         | TODO   | ansibleLanguageService.ts, server.ts             |
-
-*** Running Tests
-#+begin_src bash :results output :wrap example
-uv run pytest tests/ -v
-#+end_src
-
-#+RESULTS:
-#+begin_example
-============================= test session starts ==============================
-platform linux -- Python 3.12.12, pytest-9.0.2, pluggy-1.6.0
-rootdir: /home/chad/code/ansible-language-server
-configfile: pyproject.toml
-plugins: asyncio-1.3.0
-collected 59 items
-
-tests/utils/test_ansible_dynamic.py: 27 passed
-tests/utils/test_ansible_keywords.py: 23 passed
-tests/utils/test_yaml_utils.py: 9 passed
-
-============================== 59 passed in 0.33s ==============================
-#+end_example
 
 ** Implementation
 :PROPERTIES:
@@ -123,11 +13,13 @@ The Python port of ansible-language-server aims to:
 3. *Simplified Architecture* - Replace complex subprocess management with Python library calls (=podman-py=, =importlib.metadata=, =ansible-runner=)
 4. *Better Developer Experience* - Format with =black=, lint with =ruff=, type-check with =mypy=, all working on Python code
 
-*** Architecture
+*** TODO Architecture
 :PROPERTIES:
 :ID:       architecture
 :END:
 
+- Note taken on [2026-01-29 Thu 15:13] \\
+  for architecture diagrams, use UML or graphviz or something appropriate for org mode. Embed links.
 The server follows the standard Language Server Protocol architecture, built on [[https://github.com/openlawlibrary/pygls][pygls]]. For TypeScript codebase structure, see [[*TypeScript Codebase Overview][TypeScript Codebase Overview]].
 
 #+begin_src
@@ -439,6 +331,20 @@ Ansible defines play/task/block/role keywords as class attributes using a descri
 
 See [[file:src/ansible_ls/utils/ansible_dynamic.py][ansible_dynamic.py]] for the dynamic loader and [[file:src/ansible_ls/utils/ansible_keywords.py][ansible_keywords.py]] for the static definitions with documentation strings.
 
+*** NEXT Full Ansible parsing with custom =tree-sitter= grammar       :project:
+:PROPERTIES:
+:ID:       65a482d4-c8c4-493b-ad0f-bf467a2cffbc
+:END:
+- Note taken on [2026-01-29 Thu 23:32] \\
+  We can glue the YAML grammar and [[https://github.com/cathaysia/tree-sitter-jinja/blob/master/tree-sitter-jinja/src/grammar.json][this jinja2 one]] together with the Ansible keywords. Add a couple rules to each resolving back and forth between tasks and templates, references and declarations.
+
+  So we're not deprecating Node after all, it's needed to build the tree-sitter grammars. Python can get us the Ansible keywords and other metadata, so we get to use some of that code.
+
+  Building the parser too - which you can just wrap in Python for cheap boilerplate, I'm sure, or the tree-sitter python lib has a way of handling it. Whatever the docs say or most people do that makes sense.
+
+  Once it's working, the trick shot is to build the grammar from latest sources in CI off a matrix and build versioned releases and all that. Trees should work ok for that, they're flexible. Schema changes are unlikely within major versions of the target languages, and worth the maintenance.
+
+  But first, design documentation with tangled unit tests and integration tests where applicable ("how") under each "what" subtree, organized by "why", in org format. Put project management data in the 
 *** Data Models
 :PROPERTIES:
 :ID:       data-models
