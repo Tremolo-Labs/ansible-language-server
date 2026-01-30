@@ -18,34 +18,129 @@ The Python port of ansible-language-server aims to:
 :ID:       architecture
 :END:
 
-- Note taken on [2026-01-29 Thu 15:13] \\
-  for architecture diagrams, use UML or graphviz or something appropriate for org mode. Embed links.
 The server follows the standard Language Server Protocol architecture, built on [[https://github.com/openlawlibrary/pygls][pygls]]. For TypeScript codebase structure, see [[id:typescript-overview][TypeScript Codebase Overview]].
 
-#+begin_src
-┌─────────────────────────────────────────────────────────────────┐
-│ Client (VS Code, Emacs, etc.)                                   │
-└─────────────────────────────────────┬───────────────────────────┘
-                                      │ LSP (JSON-RPC)
-┌─────────────────────────────────────▼───────────────────────────┐
-│ pygls LanguageServer                                            │
-│   @server.feature(TEXT_DOCUMENT_HOVER)     → HoverProvider      │
-│   @server.feature(TEXT_DOCUMENT_COMPLETION) → CompletionProvider │
-│   @server.feature(TEXT_DOCUMENT_DEFINITION) → DefinitionProvider │
-└─────────────────────────────────────┬───────────────────────────┘
-                                      │
-┌─────────────────────────────────────▼───────────────────────────┐
-│ Services (per workspace folder)                                 │
-│   SettingsManager → WorkspaceManager → DocsLibrary              │
-│                                     → ValidationManager         │
-│                                     → ExecutionEnvironment      │
-└─────────────────────────────────────┬───────────────────────────┘
-                                      │
-┌─────────────────────────────────────▼───────────────────────────┐
-│ Utilities                                                       │
-│   yaml_utils (tree-sitter)  │  ansible_keywords (hybrid)        │
-└─────────────────────────────────────────────────────────────────┘
+#+begin_src dot :file images/architecture.png :cmdline -Kdot -Tpng :exports results
+digraph architecture {
+    rankdir=TB;
+    node [shape=box, style="rounded,filled", fontname="Helvetica"];
+    edge [fontname="Helvetica", fontsize=10];
+
+    subgraph cluster_client {
+        label="Editor";
+        style=dashed;
+        color=gray;
+        client [label="VS Code / Emacs / Neovim", fillcolor="#e3f2fd"];
+    }
+
+    subgraph cluster_server {
+        label="Language Server";
+        style=filled;
+        color="#f5f5f5";
+
+        pygls [label="pygls LanguageServer\n(JSON-RPC handler)", fillcolor="#fff3e0"];
+
+        subgraph cluster_providers {
+            label="Providers";
+            style=filled;
+            color="#fafafa";
+            hover [label="HoverProvider", fillcolor="#e8f5e9", href="id:hover-provider"];
+            completion [label="CompletionProvider", fillcolor="#e8f5e9", href="id:completion-provider"];
+            definition [label="DefinitionProvider", fillcolor="#e8f5e9", href="id:definition-provider"];
+        }
+
+        subgraph cluster_services {
+            label="Services (per workspace)";
+            style=filled;
+            color="#fafafa";
+            settings [label="SettingsManager", fillcolor="#fce4ec", href="id:settings-service"];
+            workspace [label="WorkspaceManager", fillcolor="#fce4ec", href="id:workspace-service"];
+            docs [label="DocsLibrary", fillcolor="#fce4ec", href="id:docs-library"];
+            validation [label="ValidationManager", fillcolor="#fce4ec", href="id:validation-service"];
+            execenv [label="ExecutionEnvironment", fillcolor="#fce4ec", href="id:container-management"];
+        }
+
+        subgraph cluster_utils {
+            label="Utilities";
+            style=filled;
+            color="#fafafa";
+            yaml [label="yaml_utils\n(tree-sitter)", fillcolor="#f3e5f5", href="id:yaml-parsing"];
+            keywords [label="ansible_keywords\n(hybrid)", fillcolor="#f3e5f5", href="id:ansible-keywords"];
+        }
+    }
+
+    client -> pygls [label="LSP\n(stdio/TCP)", style=bold];
+    pygls -> hover [label="textDocument/hover"];
+    pygls -> completion [label="textDocument/completion"];
+    pygls -> definition [label="textDocument/definition"];
+
+    hover -> docs;
+    hover -> yaml;
+    hover -> keywords;
+    completion -> docs;
+    completion -> yaml;
+    completion -> keywords;
+    definition -> yaml;
+    definition -> workspace;
+
+    settings -> workspace [style=dashed];
+    workspace -> docs;
+    workspace -> validation;
+    workspace -> execenv;
+
+    docs -> keywords [style=dotted];
+    validation -> execenv [style=dotted, label="optional"];
+}
 #+end_src
+
+#+RESULTS:
+[[file:images/architecture.png]]
+
+**** Data Flow
+
+#+begin_src dot :file images/dataflow.png :cmdline -Kdot -Tpng :exports results
+digraph dataflow {
+    rankdir=LR;
+    node [shape=box, style="rounded,filled", fontname="Helvetica"];
+
+    subgraph cluster_input {
+        label="Input";
+        doc [label="YAML Document", fillcolor="#e3f2fd"];
+        pos [label="Cursor Position", fillcolor="#e3f2fd"];
+    }
+
+    subgraph cluster_parse {
+        label="Parsing";
+        tree [label="tree-sitter AST", fillcolor="#fff3e0"];
+        path [label="Path to Node", fillcolor="#fff3e0"];
+        ancestry [label="AncestryBuilder", fillcolor="#fff3e0", href="id:ancestry-builder"];
+    }
+
+    subgraph cluster_context {
+        label="Context Detection";
+        ctx [label="play | task | block | role", fillcolor="#e8f5e9"];
+    }
+
+    subgraph cluster_output {
+        label="Output";
+        kw [label="Keyword Docs", fillcolor="#fce4ec"];
+        mod [label="Module Docs", fillcolor="#fce4ec"];
+        comp [label="Completions", fillcolor="#fce4ec"];
+    }
+
+    doc -> tree [label="parse_yaml()"];
+    pos -> path;
+    tree -> path [label="get_path_to_position()"];
+    path -> ancestry;
+    ancestry -> ctx [label="parent().get_string_key()"];
+    ctx -> kw;
+    ctx -> mod;
+    ctx -> comp;
+}
+#+end_src
+
+#+RESULTS:
+[[file:images/dataflow.png]]
 
 **** Server Entry Point
 :PROPERTIES:
