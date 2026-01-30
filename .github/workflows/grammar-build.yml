@@ -1,0 +1,66 @@
+name: Build Grammar
+
+on:
+  push:
+    paths:
+      - 'tools/extract_keywords.py'
+      - 'tools/compose_grammar.py'
+      - '.github/workflows/grammar-build.yml'
+  schedule:
+    # Weekly rebuild to catch new Ansible releases
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ansible-version: ['2.14', '2.15', '2.16', '2.17']
+        python-version: ['3.10', '3.11', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Ansible
+        run: pip install "ansible-core>=${{ matrix.ansible-version }},<${{ matrix.ansible-version }}.99"
+
+      - name: Install tree-sitter CLI
+        run: npm install -g tree-sitter-cli
+
+      - name: Extract keywords
+        run: python tools/extract_keywords.py
+
+      - name: Compose grammar
+        run: python tools/compose_grammar.py
+
+      - name: Generate parser
+        working-directory: tree-sitter-ansible
+        run: tree-sitter generate
+
+      - name: Build parser
+        working-directory: tree-sitter-ansible
+        run: tree-sitter build
+
+      - name: Run tests
+        run: pytest tests/tools/ -v
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: grammar-ansible-${{ matrix.ansible-version }}-py${{ matrix.python-version }}
+          path: |
+            tree-sitter-ansible/src/
+            tree-sitter-ansible/*.so
+            tree-sitter-ansible/*.dylib
+            build/keywords.json
