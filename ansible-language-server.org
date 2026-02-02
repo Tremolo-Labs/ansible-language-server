@@ -1,24 +1,92 @@
 * ansible language server
 
+*** Project Configuration
+:PROPERTIES:
+:ID:       project-configuration
+:END:
+
+Referenced from [[id:042d8753-3757-48a6-b5a0-251196171795][TODO Progress]].
+
+**** pyproject.toml
+
+#+begin_src toml :tangle pyproject.toml
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ansible-language-server"
+version = "0.1.0"
+description = "Language Server Protocol implementation for Ansible"
+requires-python = ">=3.10,<3.13"
+readme = "README.md"
+license = {text = "GPL3"}
+dependencies = [
+    "pygls>=1.3.0",
+    "lsprotocol>=2023.0.0",
+    "ruamel.yaml>=0.18.0",
+    "attrs>=23.0.0",
+    "tree-sitter>=0.23.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.3.0",
+    "mypy>=1.8.0",
+    "thefuzz>=0.22.0",
+]
+container = [
+    "podman>=5.0.0",
+]
+ansible = [
+    "ansible-runner>=2.4.0",
+]
+
+[project.scripts]
+ansible-language-server = "ansible_ls.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ansible_ls"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+
+[tool.mypy]
+strict = true
+#+end_src
+
+**** Python Version
+
+=tree-sitter-languages= only has pre-built wheels for Python 3.10-3.12. Pin version until wheels for 3.13+ are released.
+
+#+begin_src text :tangle .python-version
+3.14
+#+end_src
 
 ** Implementation
 :PROPERTIES:
 :ID:       python-port-docs
 :END:
 
-The Python port of ansible-language-server aims to:
+The Python port of ansible-language-server aims:
 
 1. *Native Ansible Integration* - Import Ansible's internal APIs directly for keyword validation, module discovery, and documentation rather than reimplementing or shelling out
 2. *Modern Tooling* - Use =tree-sitter= for fast, incremental YAML parsing with position tracking instead of slower pure-Python parsers
 3. *Simplified Architecture* - Replace complex subprocess management with Python library calls (=podman-py=, =importlib.metadata=, =ansible-runner=)
 4. *Better Developer Experience* - Format with =black=, lint with =ruff=, type-check with =mypy=, all working on Python code
 
-*** COMMENT Architecture
+*** Architecture
 :PROPERTIES:
 :ID:       architecture
 :END:
 
-The server follows the standard Language Server Protocol architecture, built on [[https://github.com/openlawlibrary/pygls][pygls]]. For TypeScript codebase structure, see [[id:typescript-overview][TypeScript Codebase Overview]].
+The server follows the standard Language Server Protocol architecture, built on [[https://github.com/openlawlibrary/pygls][pygls]].
 
 #+begin_src plantuml :file images/architecture.png :exports results
 @startuml
@@ -78,10 +146,10 @@ validation ..> execenv : optional
 #+RESULTS:
 [[file:images/architecture.png]]
 
-Component documentation: [[id:hover-provider][HoverProvider]], [[id:completion-provider][CompletionProvider]], [[id:definition-provider][DefinitionProvider]], [[id:settings-service][SettingsManager]], [[id:workspace-service][WorkspaceManager]], [[id:docs-library][DocsLibrary]], [[id:validation-service][ValidationManager]], [[id:container-management][ExecutionEnvironment]], [[id:yaml-parsing][yaml_utils]], [[id:ansible-keywords][ansible_keywords]].
+Component documentation: [[id:hover-provider][HoverProvider]], [[id:completion-provider][CompletionProvider]], [[id:definition-provider][DefinitionProvider]], [[id:settings-service][SettingsManager]], [[id:workspace-service][WorkspaceManager]], [[id:docs-library][DocsLibrary]], [[id:validation-service][ValidationManager]], [[id:container-management][ExecutionEnvironment]], [[id:yaml-parsing][yaml_utils]],
 
 **** Data Flow
-
+We bake as much information as possible into the tree-sitter grammar.
 #+begin_src plantuml :file images/dataflow.png :exports results
 @startuml
 !theme plain
@@ -109,7 +177,7 @@ package "Output" {
   [Completions] as comp #fce4ec
 }
 
-doc -right-> tree : parse_yaml()
+doc -right-> tree : parse_ansible()
 pos -right-> path
 tree -right-> path : get_path_to_position()
 path -right-> ancestry
@@ -123,7 +191,7 @@ ctx -right-> comp
 #+RESULTS:
 [[file:images/dataflow.png]]
 
-tree-sitter provides all the stuff.
+
 
 **** Server Entry Point
 :PROPERTIES:
@@ -161,19 +229,13 @@ if __name__ == "__main__":
 **** Why tree-sitter
 For a language server that re-parses on every keystroke, we need:
 - *Incremental parsing* - Only reparse changed regions
-- *Error recovery* - Keep working with invalid YAML
+- *Error recovery* - Keep working with invalid markup
 - *Position tracking* - Map cursor to AST nodes
-
-| Feature             | tree-sitter-yaml               | ruamel.yaml             |
-|---------------------+--------------------------------+-------------------------|
-| Position Tracking   | Native (start/end points)      | Native (lc attrs)       |
-| Incremental Parsing | *Yes*                          | No                      |
-| Performance         | *C implementation*             | Pure Python             |
-| Error Recovery      | *Partial parse on errors*      | Fails on invalid YAML   |
-
+- *Grammar Composition* - Ansible is actually jinja2 and yaml, python, a little ini, a custom set of keywords...
+  
 *TypeScript:* [[file:src/utils/yaml.ts][src/utils/yaml.ts]] (663 lines) uses the npm =yaml= package with custom AST traversal.
 
-*Python:* We use =tree-sitter= which provides all three requirements. 
+*Python:* We use =tree-sitter= which provides all requirements. 
 
 #+begin_src python :tangle src/ansible_ls/utils/yaml_utils.py :mkdirp t
 """YAML AST utilities using tree-sitter.
@@ -187,11 +249,11 @@ import tree_sitter_yaml
 from tree_sitter import Language, Parser
 
 # Initialize tree-sitter YAML parser (tree-sitter 0.23+ API)
-_language = Language(tree_sitter_yaml.language())
+_language = Language(tree_sitter_ansible.language())
 _parser = Parser(_language)
 
 
-def parse_yaml(content: str) -> "tree_sitter.Tree":
+def parse_ansible(content: str) -> "tree_sitter.Tree":
     """Parse YAML content and return tree-sitter AST."""
     return _parser.parse(content.encode("utf-8"))
 
@@ -2109,10 +2171,12 @@ jobs:
 #+end_src
 
 
-*** Ported Data Models
+*** TODO auto-Ported Data Models
 :PROPERTIES:
 :ID:       data-models
 :END:
+- Note taken on [2026-02-02 Mon 05:23] \\
+  any of these we can't bake into the grammar should be generated at build time
 
 **** Module Metadata
 :PROPERTIES:
@@ -2602,11 +2666,13 @@ class WorkspaceManager:
         self._contexts.clear()
 #+end_src
 
-**** Documentation Library
+**** TODO Documentation Library
 :PROPERTIES:
 :ID:       docs-library
 :END:
 
+- Note taken on [2026-02-02 Mon 05:28] \\
+  if it's possible to bake this into the grammar, then move this over to the build
 The =DocsLibrary= discovers and caches Ansible module documentation from builtin modules, installed collections, and playbook-adjacent collections.
 
 *TypeScript:* [[file:src/services/docsLibrary.ts][src/services/docsLibrary.ts]] (~275 lines) caches module metadata and documentation.
@@ -2968,588 +3034,6 @@ async def run_ansible_lint(
 """Core services for the language server."""
 #+end_src
 
-*** Providers
-:PROPERTIES:
-:ID:       providers
-:END:
-
-Providers implement LSP features by handling specific request types. In pygls, they're registered with decorators:
-
-#+begin_src python
-@server.feature(types.TEXT_DOCUMENT_HOVER)
-async def hover(params: types.HoverParams) -> types.Hover | None:
-    """Provide hover information."""
-    ...
-#+end_src
-
-Each provider:
-1. Receives strongly-typed params from =lsprotocol=
-2. Accesses documents via =server.workspace.get_document()=
-3. Uses [[id:services][services]] for business logic
-4. Returns strongly-typed results or =None=
-
-**** Hover Provider
-:PROPERTIES:
-:ID:       hover-provider
-:END:
-
-Shows documentation for keywords and modules when the user hovers over them.
-
-*TypeScript:* [[file:src/providers/hoverProvider.ts][src/providers/hoverProvider.ts]] (~150 lines)
-
-*Python:*
-#+begin_src python :tangle src/ansible_ls/providers/hover.py :mkdirp t
-"""Hover provider for Ansible playbooks.
-
-Port of src/providers/hoverProvider.ts
-"""
-
-from typing import Optional
-
-from lsprotocol import types
-from pygls.server import LanguageServer
-
-from ..services.docs_library import DocsLibrary
-from ..services.workspace_manager import WorkspaceManager
-from ..utils.yaml_utils import parse_yaml, get_path_to_position, AncestryBuilder
-from ..utils.ansible_keywords import get_keyword_documentation, get_keyword_text
-
-
-async def provide_hover(
-    server: LanguageServer,
-    params: types.HoverParams,
-    workspace_manager: WorkspaceManager,
-) -> Optional[types.Hover]:
-    """Provide hover information for the symbol at position.
-
-    Args:
-        server: The language server instance
-        params: Hover request parameters
-        workspace_manager: Workspace manager for accessing services
-
-    Returns:
-        Hover information or None if nothing to show.
-    """
-    uri = params.text_document.uri
-    document = server.workspace.get_document(uri)
-
-    # Parse YAML and get path to cursor
-    tree = parse_yaml(document.source)
-    path = get_path_to_position(
-        tree,
-        params.position.line,
-        params.position.character,
-    )
-
-    if not path:
-        return None
-
-    # Get the word at cursor position
-    node = path[-1]
-    word = node.text.decode("utf-8").strip()
-
-    # Determine context (play, task, block, etc.)
-    context = _determine_context(path)
-
-    # Try keyword documentation first
-    keyword_doc = get_keyword_documentation(word, context)
-    if keyword_doc:
-        text = get_keyword_text(keyword_doc)
-        return types.Hover(
-            contents=types.MarkupContent(
-                kind=types.MarkupKind.Markdown,
-                value=f"**{word}** (keyword)\n\n{text}",
-            ),
-        )
-
-    # Try module documentation
-    workspace_context = workspace_manager.get_context(uri)
-    if workspace_context:
-        docs_library = await workspace_context.get_docs_library()
-        module_doc = await docs_library.get_module_documentation(word)
-        if module_doc:
-            return types.Hover(
-                contents=types.MarkupContent(
-                    kind=types.MarkupKind.Markdown,
-                    value=_format_module_documentation(word, module_doc),
-                ),
-            )
-
-    return None
-
-
-def _determine_context(path: list) -> str:
-    """Determine the Ansible context from AST path.
-
-    Returns 'play', 'task', 'block', or 'role'.
-    """
-    builder = AncestryBuilder(path)
-
-    # Walk up looking for context indicators
-    # TODO: Implement context detection based on surrounding keys
-    # For now, default to 'task' which is most common
-    return "task"
-
-
-def _format_module_documentation(name: str, doc) -> str:
-    """Format module documentation as Markdown."""
-    lines = [f"**{name}** (module)"]
-
-    if doc.short_description:
-        lines.append("")
-        lines.append(doc.short_description)
-
-    if doc.description:
-        lines.append("")
-        lines.append(doc.description)
-
-    if doc.options:
-        lines.append("")
-        lines.append("**Options:**")
-        for opt_name, opt in doc.options.items():
-            req = " *(required)*" if opt.required else ""
-            lines.append(f"- `{opt_name}`{req}: {opt.description or ''}")
-
-    return "\n".join(lines)
-#+end_src
-
-**** Definition Provider
-:PROPERTIES:
-:ID:       definition-provider
-:END:
-
-Enables "go to definition" for role references, task includes, and variable files.
-
-*TypeScript:* [[file:src/providers/definitionProvider.ts][src/providers/definitionProvider.ts]] (~120 lines)
-
-*Python:*
-#+begin_src python :tangle src/ansible_ls/providers/definition.py :mkdirp t
-"""Definition provider for Ansible playbooks.
-
-Port of src/providers/definitionProvider.ts
-"""
-
-from typing import Optional
-from pathlib import Path
-from urllib.parse import urlparse
-
-from lsprotocol import types
-from pygls.server import LanguageServer
-
-from ..services.workspace_manager import WorkspaceManager
-from ..utils.yaml_utils import parse_yaml, get_path_to_position, AncestryBuilder
-
-
-async def provide_definition(
-    server: LanguageServer,
-    params: types.DefinitionParams,
-    workspace_manager: WorkspaceManager,
-) -> Optional[types.Location | list[types.Location]]:
-    """Provide go-to-definition for Ansible symbols.
-
-    Supports:
-    - Role references (roles: section)
-    - Task includes (include_tasks, import_tasks)
-    - Variable file includes (vars_files)
-    - Playbook imports (import_playbook)
-
-    Args:
-        server: The language server instance
-        params: Definition request parameters
-        workspace_manager: Workspace manager for accessing services
-
-    Returns:
-        Location(s) of the definition, or None if not found.
-    """
-    uri = params.text_document.uri
-    document = server.workspace.get_document(uri)
-
-    # Parse YAML and get path to cursor
-    tree = parse_yaml(document.source)
-    path = get_path_to_position(
-        tree,
-        params.position.line,
-        params.position.character,
-    )
-
-    if not path:
-        return None
-
-    # Get the word at cursor position
-    node = path[-1]
-    word = node.text.decode("utf-8").strip().strip("'\"")
-
-    # Determine what kind of reference this is
-    ref_type = _determine_reference_type(path)
-
-    if ref_type == "role":
-        return await _find_role_definition(word, uri, workspace_manager)
-    elif ref_type == "include":
-        return _find_include_definition(word, uri)
-    elif ref_type == "vars_file":
-        return _find_vars_file_definition(word, uri)
-
-    return None
-
-
-def _determine_reference_type(path: list) -> Optional[str]:
-    """Determine what kind of reference the cursor is on.
-
-    Returns 'role', 'include', 'vars_file', or None.
-    """
-    builder = AncestryBuilder(path)
-
-    # Look for key context
-    key = builder.parent("block_mapping").get_string_key()
-
-    if key in ("role", "roles"):
-        return "role"
-    elif key in ("include_tasks", "import_tasks", "include", "import_playbook"):
-        return "include"
-    elif key in ("vars_files", "include_vars"):
-        return "vars_file"
-
-    return None
-
-
-async def _find_role_definition(
-    role_name: str,
-    document_uri: str,
-    workspace_manager: WorkspaceManager,
-) -> Optional[types.Location]:
-    """Find the definition of a role."""
-    parsed = urlparse(document_uri)
-    doc_dir = Path(parsed.path).parent
-
-    # Check common role locations
-    role_paths = [
-        doc_dir / "roles" / role_name / "tasks" / "main.yml",
-        doc_dir / "roles" / role_name / "tasks" / "main.yaml",
-        doc_dir.parent / "roles" / role_name / "tasks" / "main.yml",
-    ]
-
-    for role_path in role_paths:
-        if role_path.exists():
-            return types.Location(
-                uri=role_path.as_uri(),
-                range=types.Range(
-                    start=types.Position(line=0, character=0),
-                    end=types.Position(line=0, character=0),
-                ),
-            )
-
-    return None
-
-
-def _find_include_definition(
-    include_path: str,
-    document_uri: str,
-) -> Optional[types.Location]:
-    """Find the definition of an included file."""
-    parsed = urlparse(document_uri)
-    doc_dir = Path(parsed.path).parent
-
-    # Resolve relative path
-    target_path = doc_dir / include_path
-    if target_path.exists():
-        return types.Location(
-            uri=target_path.as_uri(),
-            range=types.Range(
-                start=types.Position(line=0, character=0),
-                end=types.Position(line=0, character=0),
-            ),
-        )
-
-    return None
-
-
-def _find_vars_file_definition(
-    vars_path: str,
-    document_uri: str,
-) -> Optional[types.Location]:
-    """Find the definition of a vars file."""
-    return _find_include_definition(vars_path, document_uri)
-#+end_src
-
-**** Completion Provider
-:PROPERTIES:
-:ID:       completion-provider
-:END:
-
-The most complex provider (~666 lines in TypeScript). Handles context detection (play vs task vs block), module option completion with suboptions, and collection-aware module name completion.
-
-*TypeScript:* [[file:src/providers/completionProvider.ts][src/providers/completionProvider.ts]] (666 lines) with extensive context detection logic.
-
-*Python:*
-#+begin_src python :tangle src/ansible_ls/providers/completion.py :mkdirp t
-"""Completion provider for Ansible playbooks.
-
-Port of src/providers/completionProvider.ts
-
-This is the most complex provider, handling:
-- Keyword completion based on context
-- Module name completion (FQCN and short)
-- Module option completion with suboptions
-- Value completion (choices, booleans)
-"""
-
-from typing import Optional
-
-from lsprotocol import types
-from pygls.server import LanguageServer
-
-from ..services.workspace_manager import WorkspaceManager
-from ..services.docs_library import DocsLibrary
-from ..utils.yaml_utils import parse_yaml, get_path_to_position, AncestryBuilder
-from ..utils.ansible_keywords import (
-    PLAY_KEYWORDS,
-    TASK_KEYWORDS,
-    BLOCK_KEYWORDS,
-    ROLE_KEYWORDS,
-    is_task_keyword,
-)
-
-
-async def provide_completion(
-    server: LanguageServer,
-    params: types.CompletionParams,
-    workspace_manager: WorkspaceManager,
-) -> Optional[types.CompletionList]:
-    """Provide completion items at cursor position.
-
-    Args:
-        server: The language server instance
-        params: Completion request parameters
-        workspace_manager: Workspace manager for accessing services
-
-    Returns:
-        CompletionList with items, or None if no completions available.
-    """
-    uri = params.text_document.uri
-    document = server.workspace.get_document(uri)
-
-    # Parse YAML and get path to cursor
-    tree = parse_yaml(document.source)
-    path = get_path_to_position(
-        tree,
-        params.position.line,
-        params.position.character,
-    )
-
-    if not path:
-        return None
-
-    # Determine completion context
-    context = _determine_completion_context(path, document.source, params.position)
-
-    items: list[types.CompletionItem] = []
-
-    if context.type == "play_key":
-        items = _get_keyword_completions(PLAY_KEYWORDS, context.prefix)
-    elif context.type == "task_key":
-        items = _get_keyword_completions(TASK_KEYWORDS, context.prefix)
-        # Also add module completions
-        workspace_context = workspace_manager.get_context(uri)
-        if workspace_context:
-            docs_library = await workspace_context.get_docs_library()
-            items.extend(_get_module_completions(docs_library, context.prefix))
-    elif context.type == "block_key":
-        items = _get_keyword_completions(BLOCK_KEYWORDS, context.prefix)
-    elif context.type == "role_key":
-        items = _get_keyword_completions(ROLE_KEYWORDS, context.prefix)
-    elif context.type == "module_option":
-        workspace_context = workspace_manager.get_context(uri)
-        if workspace_context:
-            docs_library = await workspace_context.get_docs_library()
-            items = await _get_option_completions(
-                docs_library, context.module_name, context.prefix
-            )
-    elif context.type == "value":
-        items = _get_value_completions(context)
-
-    return types.CompletionList(
-        is_incomplete=False,
-        items=items,
-    )
-
-
-class CompletionContext:
-    """Holds information about the completion context."""
-
-    def __init__(self):
-        self.type: str = "unknown"  # play_key, task_key, module_option, value
-        self.prefix: str = ""
-        self.module_name: Optional[str] = None
-        self.option_name: Optional[str] = None
-        self.in_list: bool = False
-
-
-def _determine_completion_context(
-    path: list,
-    source: str,
-    position: types.Position,
-) -> CompletionContext:
-    """Determine what kind of completion is needed.
-
-    Analyzes the AST path and surrounding context to determine:
-    - Are we completing a key or a value?
-    - What level are we at (play, task, block)?
-    - If completing module options, which module?
-    """
-    context = CompletionContext()
-
-    # Get the text on the current line up to cursor
-    lines = source.split("\n")
-    if position.line < len(lines):
-        line = lines[position.line]
-        line_prefix = line[: position.character]
-        context.prefix = line_prefix.lstrip().rstrip(":")
-
-    builder = AncestryBuilder(path)
-
-    # Try to determine context by walking up the tree
-    # This is a simplified version - full implementation needs more cases
-
-    current = builder.get()
-    if current and current.type == "block_mapping":
-        # We're at a mapping level - determine if play, task, or block
-        context.type = _detect_mapping_context(builder)
-    elif current and current.type == "block_sequence":
-        # We're at a list - could be plays, tasks, or handlers
-        parent_key = builder.parent("block_mapping").get_string_key()
-        if parent_key in ("tasks", "pre_tasks", "post_tasks", "handlers"):
-            context.type = "task_key"
-        elif parent_key is None:
-            context.type = "play_key"  # Root level list = plays
-
-    return context
-
-
-def _detect_mapping_context(builder: AncestryBuilder) -> str:
-    """Detect if a mapping is play, task, block, or role level."""
-    # Check for task-specific keys
-    key = builder.get_string_key()
-    if key and is_task_keyword(key):
-        return "module_option"
-
-    # Walk up to find context
-    parent_key = builder.parent("block_mapping").get_string_key()
-    if parent_key in ("tasks", "pre_tasks", "post_tasks", "handlers"):
-        return "task_key"
-    elif parent_key == "block":
-        return "task_key"
-    elif parent_key == "roles":
-        return "role_key"
-
-    return "play_key"
-
-
-def _get_keyword_completions(
-    keywords: dict,
-    prefix: str,
-) -> list[types.CompletionItem]:
-    """Generate completion items for keywords."""
-    items = []
-    for keyword, doc in keywords.items():
-        if prefix and not keyword.startswith(prefix):
-            continue
-
-        # Get documentation text
-        if hasattr(doc, "value"):
-            detail = doc.value[:100] if doc.value else ""
-        else:
-            detail = str(doc)[:100] if doc else ""
-
-        items.append(
-            types.CompletionItem(
-                label=keyword,
-                kind=types.CompletionItemKind.Keyword,
-                detail=detail,
-                insert_text=f"{keyword}: ",
-                insert_text_format=types.InsertTextFormat.PlainText,
-            )
-        )
-    return items
-
-
-def _get_module_completions(
-    docs_library: DocsLibrary,
-    prefix: str,
-) -> list[types.CompletionItem]:
-    """Generate completion items for module names."""
-    items = []
-    modules = docs_library.find_modules(prefix)
-
-    for module in modules:
-        doc = module.documentation
-        detail = doc.short_description if doc else ""
-
-        items.append(
-            types.CompletionItem(
-                label=module.fqcn,
-                kind=types.CompletionItemKind.Module,
-                detail=detail,
-                insert_text=f"{module.fqcn}:\n  ",
-                insert_text_format=types.InsertTextFormat.PlainText,
-                filter_text=module.name,  # Allow matching on short name
-            )
-        )
-    return items
-
-
-async def _get_option_completions(
-    docs_library: DocsLibrary,
-    module_name: Optional[str],
-    prefix: str,
-) -> list[types.CompletionItem]:
-    """Generate completion items for module options."""
-    if not module_name:
-        return []
-
-    doc = await docs_library.get_module_documentation(module_name)
-    if not doc or not doc.options:
-        return []
-
-    items = []
-    for name, option in doc.options.items():
-        if prefix and not name.startswith(prefix):
-            continue
-
-        detail = option.description or ""
-        if option.required:
-            detail = f"(required) {detail}"
-
-        items.append(
-            types.CompletionItem(
-                label=name,
-                kind=types.CompletionItemKind.Property,
-                detail=detail[:100],
-                insert_text=f"{name}: ",
-                insert_text_format=types.InsertTextFormat.PlainText,
-            )
-        )
-    return items
-
-
-def _get_value_completions(context: CompletionContext) -> list[types.CompletionItem]:
-    """Generate completion items for values (booleans, choices)."""
-    items = []
-
-    # Boolean completions (common case)
-    for val in ["true", "false", "yes", "no"]:
-        items.append(
-            types.CompletionItem(
-                label=val,
-                kind=types.CompletionItemKind.Value,
-            )
-        )
-
-    return items
-#+end_src
-
-#+begin_src python :tangle src/ansible_ls/providers/__init__.py :mkdirp t
-"""LSP feature providers."""
-#+end_src
 
 *** External Tool Integration
 :PROPERTIES:
@@ -3839,7 +3323,6 @@ class TestYamlParsing:
 :END:
 
 Referenced from [[id:architecture][Architecture]].
-
 The ansible-language-server is a TypeScript implementation of the Language Server Protocol for Ansible playbooks. Total: ~7,126 lines across 34 files.
 
 #+begin_src
@@ -3869,125 +3352,8 @@ Key modules by complexity:
 | ansibleLanguageService.ts |   365 | Medium     |
 | docsLibrary.ts            |   275 | Medium     |
 
-*** Ansible Internal APIs
-:PROPERTIES:
-:ID:       ansible-internal-apis
-:END:
 
-Referenced from [[id:ansible-keywords][Ansible Keywords]].
 
-Ansible defines play/task/block/role keywords as class attributes using a descriptor pattern:
-
-| Context | Module                            | Class          | Count |
-|---------+-----------------------------------+----------------+-------|
-| Play    | ansible.playbook.play             | Play           |    42 |
-| Task    | ansible.playbook.task             | Task           |    42 |
-| Block   | ansible.playbook.block            | Block          |    31 |
-| Role    | ansible.playbook.role.definition  | RoleDefinition |    26 |
-
-Access via Python imports:
-
-#+begin_src python
-import ansible.playbook.play as play_mod
-
-play_keywords = play_mod.Play.fattributes  # dict[str, Attribute]
-
-attr = play_keywords['name']
-print(attr.isa)        # 'string' - type constraint
-print(attr.required)   # False
-print(attr.default)    # default value
-#+end_src
-
-*Stability Assessment:* Ansible's internal APIs are *not publicly supported*, but the attribute system is core to playbook parsing since Ansible 2.0. Most changes are additive. We wrap in try/except for fallback.
-
-*** Dependency Mapping
-:PROPERTIES:
-:ID:       dependency-mapping
-:END:
-
-Referenced from [[id:architecture][Architecture]].
-
-| TypeScript                  | Python Equivalent                   | Notes                    |
-|-----------------------------+-------------------------------------+--------------------------|
-| vscode-languageserver       | pygls                               | Main LSP library         |
-| yaml (npm)                  | tree-sitter-yaml                    | YAML parsing             |
-| lodash                      | toolz or builtins                   | Utility functions        |
-| uuid                        | uuid                                | Standard library         |
-| glob                        | pathlib, glob                       | Standard library         |
-| ini                         | configparser                        | Standard library         |
-| @flatten-js/interval-tree   | sortedcontainers                    | Interval tree            |
-
-*** Project Configuration
-:PROPERTIES:
-:ID:       project-configuration
-:END:
-
-Referenced from [[id:042d8753-3757-48a6-b5a0-251196171795][TODO Progress]].
-
-**** pyproject.toml
-
-#+begin_src toml :tangle pyproject.toml
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[project]
-name = "ansible-language-server"
-version = "0.1.0"
-description = "Language Server Protocol implementation for Ansible"
-requires-python = ">=3.10,<3.13"
-readme = "README.md"
-license = {text = "MIT"}
-dependencies = [
-    "pygls>=1.3.0",
-    "lsprotocol>=2023.0.0",
-    "ruamel.yaml>=0.18.0",
-    "attrs>=23.0.0",
-    "tree-sitter>=0.23.0",
-    "tree-sitter-yaml>=0.7.0",  # Use direct binding, not tree-sitter-languages
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
-    "ruff>=0.3.0",
-    "mypy>=1.8.0",
-    "thefuzz>=0.22.0",
-]
-container = [
-    "podman>=5.0.0",
-]
-ansible = [
-    "ansible-runner>=2.4.0",
-]
-
-[project.scripts]
-ansible-language-server = "ansible_ls.server:main"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/ansible_ls"]
-
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-testpaths = ["tests"]
-
-[tool.ruff]
-line-length = 88
-target-version = "py310"
-
-[tool.mypy]
-python_version = "3.10"
-strict = true
-#+end_src
-
-**** Python Version
-
-=tree-sitter-languages= only has pre-built wheels for Python 3.10-3.12. Pin version until wheels for 3.13+ are released.
-
-#+begin_src text :tangle .python-version
-3.12
-#+end_src
 
 *** Package Initialization
 :PROPERTIES:

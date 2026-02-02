@@ -71,7 +71,7 @@ def extract_keyword_metadata() -> dict[str, dict[str, Any]]:
                 }
 
     except ImportError:
-        pass  # Use static fallback
+        logging.get_logger
 
     return metadata
 
@@ -441,32 +441,6 @@ def _serialize_default(value: Any) -> Any:
     if isinstance(value, dict):
         return {k: _serialize_default(v) for k, v in value.items()}
     return repr(value)
-
-
-def _static_keyword_fallback() -> dict[str, list[str]]:
-    """Fallback to static keywords when Ansible not available."""
-    try:
-        from ansible_ls.utils.ansible_keywords import (
-            PLAY_KEYWORDS,
-            TASK_KEYWORDS,
-            BLOCK_KEYWORDS,
-            ROLE_KEYWORDS,
-        )
-
-        return {
-            "play": list(PLAY_KEYWORDS.keys()),
-            "task": list(TASK_KEYWORDS.keys()),
-            "block": list(BLOCK_KEYWORDS.keys()),
-            "role": list(ROLE_KEYWORDS.keys()),
-        }
-    except ImportError:
-        # Minimal fallback
-        return {
-            "play": ["name", "hosts", "tasks", "vars", "roles", "become", "gather_facts"],
-            "task": ["name", "register", "when", "loop", "notify", "tags", "become"],
-            "block": ["name", "block", "rescue", "always", "when", "become"],
-            "role": ["name", "role", "when", "tags", "become"],
-        }
 
 
 def main() -> None:
