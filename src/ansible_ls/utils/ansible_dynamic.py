@@ -75,11 +75,27 @@ def _extract_keyword_meta(name: str, attr: AnsibleAttribute) -> KeywordMeta:
     )
 
 
-def _load_from_ansible() -> Optional[DynamicKeywords]:
+
+
+
+@cache
+def load_keywords() -> DynamicKeywords:
+    """
+    Load keyword definitions, preferring Ansible internals.
+
+    This function is cached - keywords are loaded once at first call.
+    Returns DynamicKeywords with source='ansible' if loaded from Ansible,
+    or source='static' if using fallback.
+
+    Returns:
+        DynamicKeywords containing keyword sets for all contexts.
+        None if Ansible is not installed or the API has changed.
+    """
+
     """
     Load keyword definitions directly from Ansible internals.
 
-    Returns None if Ansible is not installed or the API has changed.
+
     """
     try:
         # Import Ansible playbook modules
@@ -117,46 +133,13 @@ def _load_from_ansible() -> Optional[DynamicKeywords]:
         # Ansible not installed or API changed
         import logging
 
-        logging.getLogger(__name__).debug(
-            "Could not load keywords from Ansible: %s. Using static fallback.", e
+        logging.getLogger(__name__).error(
+            "Could not load keywords from Ansible: %s. Using static fallback.",
+            e
         )
-        return None
+        import sys
+        sys.exit()
 
-
-def _load_from_static() -> DynamicKeywords:
-    """Load keyword definitions from static module (fallback)."""
-    # Import here to avoid circular dependency
-    from . import ansible_keywords as static
-
-    def to_meta(keywords: dict) -> dict[str, KeywordMeta]:
-        """Convert static keyword dict to KeywordMeta dict."""
-        return {name: KeywordMeta(name=name) for name in keywords}
-
-    return DynamicKeywords(
-        play=to_meta(static.PLAY_KEYWORDS),
-        task=to_meta(static.TASK_KEYWORDS),
-        block=to_meta(static.BLOCK_KEYWORDS),
-        role=to_meta(static.ROLE_KEYWORDS),
-        source="static",
-    )
-
-
-@cache
-def load_keywords() -> DynamicKeywords:
-    """
-    Load keyword definitions, preferring Ansible internals.
-
-    This function is cached - keywords are loaded once at first call.
-    Returns DynamicKeywords with source='ansible' if loaded from Ansible,
-    or source='static' if using fallback.
-
-    Returns:
-        DynamicKeywords containing keyword sets for all contexts.
-    """
-    result = _load_from_ansible()
-    if result is not None:
-        return result
-    return _load_from_static()
 
 
 def get_keyword_names(context: str) -> frozenset[str]:
@@ -215,44 +198,3 @@ def is_valid_keyword(keyword: str, context: str) -> bool:
     if context == "task" and keyword.startswith("with_"):
         return True
     return keyword in get_keyword_names(context)
-
-
-def validate_keywords_against_ansible() -> dict[str, Any]:
-    """
-    Compare static keywords against Ansible internals.
-
-    Useful for detecting drift between static definitions and installed Ansible.
-
-    Returns:
-        Dict with 'missing_from_static' and 'extra_in_static' for each context,
-        or an error message if Ansible is not available.
-    """
-    from . import ansible_keywords as static
-
-    dynamic = _load_from_ansible()
-    if dynamic is None:
-        return {"error": "Ansible not available for comparison"}
-
-    results: dict[str, Any] = {"ansible_version": dynamic.ansible_version}
-    static_maps = {
-        "play": set(static.PLAY_KEYWORDS.keys()),
-        "task": set(static.TASK_KEYWORDS.keys()),
-        "block": set(static.BLOCK_KEYWORDS.keys()),
-        "role": set(static.ROLE_KEYWORDS.keys()),
-    }
-    dynamic_maps = {
-        "play": set(dynamic.play.keys()),
-        "task": set(dynamic.task.keys()),
-        "block": set(dynamic.block.keys()),
-        "role": set(dynamic.role.keys()),
-    }
-
-    for context in ("play", "task", "block", "role"):
-        static_set = static_maps[context]
-        dynamic_set = dynamic_maps[context]
-        results[context] = {
-            "missing_from_static": sorted(dynamic_set - static_set),
-            "extra_in_static": sorted(static_set - dynamic_set),
-        }
-
-    return results

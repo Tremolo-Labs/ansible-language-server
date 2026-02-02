@@ -120,3 +120,8 @@ uv run pytest tests/ -v
 #+end_example
 
 #+RESULTS:
+** TODO remove the static fallback
+  [2026-02-01 Sun]
+  [[id:70f1f2fd-e0ff-4b60-b834-f8f95716fe67][metaprogramming API clients from the OpenAPI doc]]
+  the ts grammar will have the symbols baked-in now
+  ansible is a build-time dependency
