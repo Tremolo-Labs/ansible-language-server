@@ -14,7 +14,7 @@
 | *Utils*                 |         |       |                           |
 | [[file:src/ansible_ls/utils/ansible_keywords.py][ansible_keywords.py]]   | ✅ DONE | ~670  | [[id:ansible-keywords][Ansible Keywords]]          |
 | [[file:src/ansible_ls/utils/ansible_dynamic.py][ansible_dynamic.py]]    | ✅ DONE | ~260  | [[id:ansible-keywords][Ansible Keywords]]          |
-| [[file:src/ansible_ls/utils/yaml_utils.py][yaml_utils.py]]         | ✅ DONE | ~180  | [[id:yaml-parsing][YAML Parsing]]              |
+| [[file:src/ansible_ls/utils/yaml_utils.py][ansible_parser.py]]     | ✅ DONE | ~180  | [[id:yaml-parsing][Ansible Parsing]]           |
 | docsParser.py         | TODO    | ~200  | [[id:docs-library][Documentation Library]]     |
 | docsFinder.py         | TODO    | ~150  | [[id:docs-library][Documentation Library]]     |
 | commandRunner.py      | TODO    | ~100  | [[id:external-tools][External Tool Integration]] |
@@ -41,7 +41,7 @@
 | *Server*                |         |       |                           |
 | [[file:src/ansible_ls/server.py][server.py]]             | ✅ DONE | ~15   | [[id:server-entry-point][Server Entry Point]]        |
 |-----------------------+---------+-------+---------------------------|
-| *Grammar (Future)*      |         |       |                           |
+| *Grammar*               |         |       |                           |
 | [[file:tools/extract_keywords.py][extract_keywords.py]]   | DESIGN  | ~80   | [[id:65a482d4-c8c4-493b-ad0f-bf467a2cffbc][Custom Grammar]]            |
 | [[file:tools/compose_grammar.py][compose_grammar.py]]    | DESIGN  | ~80   | [[id:65a482d4-c8c4-493b-ad0f-bf467a2cffbc][Custom Grammar]]            |
 

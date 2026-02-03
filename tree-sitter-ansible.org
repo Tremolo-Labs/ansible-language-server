@@ -5,8 +5,6 @@
 - Note taken on [2026-02-03 Tue 15:12] \\
   I forgot about runtime injections. So we don't have to bake as much into the grammar as I thought.
   https://chat.deepseek.com/share/ys0sjeu0b0rfj67rd2 helps clarify this. We still need a minimal Ansible grammar. But some stuff belongs at the query layer.
-:LOGBOOK:
-CLOCK: [2026-02-02 Mon 00:49]--[2026-02-02 Mon 00:49] =>  0:00
 :END:
 - Note taken on [2026-01-29 Thu 23:32] \\
   We can glue the YAML grammar and [[https://github.com/cathaysia/tree-sitter-jinja/blob/master/tree-sitter-jinja/src/grammar.json][this jinja2 one]] together with the Ansible keywords. Add a couple rules to each resolving back and forth between tasks and templates, references and declarations.
@@ -106,7 +104,6 @@ from typing import Any
 Ansible defines play/task/block/role keywords as class attributes using a descriptor pattern called =fattributes=. There's also custom filters and plugins, 
 
 #+begin_src python :tangle tools/extract_keywords.py :mkdirp t
-
 def extract_keywords() -> dict[str, list[str]]:
     """Extract keywords from Ansible playbook classes via fattributes."""
     keywords: dict[str, list[str]] = {
