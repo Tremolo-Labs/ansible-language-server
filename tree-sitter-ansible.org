@@ -974,7 +974,7 @@ a bunch of this jinja grammar boilerplate gotta go away, we have a grammar alrea
 ansible grammar should be pretty small, just some extra keywords and some rules
 
 #+begin_src jinja2
-{%
+{%js
     /**
      ,* tree-sitter-ansible grammar
      ,* Auto-generated from Ansible {ansible_version}
@@ -1647,8 +1647,13 @@ class TestMainOutput:
         assert "_ansible_version" in metadata
 #+end_src
 
-*** Integration Tests for Grammar Parsing
+*** TODO Integration Tests for Grammar Parsing
+:PROPERTIES:
+:ID:       931f28cf-d99a-41b5-a91d-6831cf6fdaea
+:END:
 
+- Note taken on [2026-02-03 Tue 16:01] \\
+  put the inline quoted fixtures into their own files and load them, the pytest way.
 #+begin_src python :tangle tests/tools/test_grammar_parsing.py :mkdirp t
 """Integration tests for the composed grammar.
 
@@ -1768,6 +1773,9 @@ class TestJinjaParsing:
 #+end_src
 
 ** Build Pipeline
+:PROPERTIES:
+:ID:       b4c4ae5e-6355-4d2e-9555-0569a808342a
+:END:
 
 #+begin_src plantuml :file images/build-pipeline.png :exports results
 @startuml

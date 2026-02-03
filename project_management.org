@@ -64,26 +64,36 @@
 9. [X] Port utils/yaml.ts using tree-sitter-yaml → [[id:yaml-parsing][YAML Parsing]]
 
 *** In Progress
-11. [ ] Implement services
-    - [ ] [[id:settings-service][SettingsManager]] - settings caching and LSP config
-    - [ ] [[id:workspace-service][WorkspaceManager]] - multi-folder context
-    - [ ] [[id:docs-library][DocsLibrary]] - module documentation cache
-    - [ ] [[id:validation-service][ValidationManager]] - ansible-lint integration
 
-11. [ ] Tangle and implement providers
-    - [ ] [[id:hover-provider][HoverProvider]] - keyword and module docs on hover
-    - [ ] [[id:definition-provider][DefinitionProvider]] - go-to-definition for roles/includes
-    - [ ] [[id:completion-provider][CompletionProvider]] - context-aware completions
+**** TODO Implement services
+:PROPERTIES:
+:ID:       99451843-ca6a-4123-abc7-7db9c6e525ad
+:END:
+   - [ ] [[id:settings-service][SettingsManager]] - settings caching and LSP config
+   - [ ] [[id:workspace-service][WorkspaceManager]] - multi-folder context
+   - [ ] [[id:docs-library][DocsLibrary]] - module documentation cache
+   - [ ] [[id:validation-service][ValidationManager]] - ansible-lint integration
+**** TODO Tangle and implement providers
+:PROPERTIES:
+:ID:       fb9a12cd-cf78-4d43-8130-eef19050a1e9
+:END:
+   - [ ] [[id:hover-provider][HoverProvider]] - keyword and module docs on hover
+   - [ ] [[id:definition-provider][DefinitionProvider]] - go-to-definition for roles/includes
+   - [ ] [[id:completion-provider][CompletionProvider]] - context-aware completions
+**** TODO [[id:65a482d4-c8c4-493b-ad0f-bf467a2cffbc][Custom tree-sitter-ansible grammar]]
+:PROPERTIES:
+:ID:       a9c72653-4bb7-4892-bc8f-b627f6e9f404
+:END:
+   - [ ] Keyword and other metadata extraction from Ansible source
+   - [ ] Grammar definition (Ansible)
+   - [ ] injection queries for YAML + Jinja2 + python
+   - [ ] CI matrix build for multiple Ansible versions
+   - [ ] Python bindings generation
 
-12. [ ] [[id:65a482d4-c8c4-493b-ad0f-bf467a2cffbc][Custom tree-sitter-ansible grammar]]
-    - [ ] Keyword and other metadata extraction from Ansible source
-    - [ ] Grammar definition (Ansible)
-    - [ ] injection queries for YAML + Jinja2 + python
-    - [ ] CI matrix build for multiple Ansible versions
-    - [ ] Python bindings generation
-
-
-*** Completion Provider Checklist
+*** TODO Completion Provider Checklist
+:PROPERTIES:
+:ID:       00ee4f24-8ff6-4eac-b63e-86d381429caa
+:END:
 - [ ] Register completion provider with =@server.feature=
 - [ ] Implement context detection (play/task/block/role/module option)
 - [ ] Implement keyword completion for each context
@@ -125,4 +135,14 @@ uv run pytest tests/ -v
 
 #+RESULTS:
 
-** implement all the other providers
+** TODO implement all the other providers
+:PROPERTIES:
+:ID:       8dbf8991-396b-4d72-98a5-c2d2bd8a2bd2
+:END:
+
+** TODO generate those cute UML diagrams from the actual code or other hard data where possible
+:PROPERTIES:
+:ID:       14d05e75-330c-4843-8214-b09fffdb6d44
+:END:
+
+[[id:b4c4ae5e-6355-4d2e-9555-0569a808342a][Build Pipeline]]
