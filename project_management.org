@@ -64,7 +64,7 @@
 9. [X] Port utils/yaml.ts using tree-sitter-yaml → [[id:yaml-parsing][YAML Parsing]]
 
 *** In Progress
-10. [ ] Implement services
+11. [ ] Implement services
     - [ ] [[id:settings-service][SettingsManager]] - settings caching and LSP config
     - [ ] [[id:workspace-service][WorkspaceManager]] - multi-folder context
     - [ ] [[id:docs-library][DocsLibrary]] - module documentation cache
@@ -75,12 +75,13 @@
     - [ ] [[id:definition-provider][DefinitionProvider]] - go-to-definition for roles/includes
     - [ ] [[id:completion-provider][CompletionProvider]] - context-aware completions
 
-*** Custom Tree-Sitter Grammar
 12. [ ] [[id:65a482d4-c8c4-493b-ad0f-bf467a2cffbc][Custom tree-sitter-ansible grammar]]
     - [ ] Keyword and other metadata extraction from Ansible source
-    - [ ] Grammar composition (YAML + Jinja2 + Ansible)
+    - [ ] Grammar definition (Ansible)
+    - [ ] injection queries for YAML + Jinja2 + python
     - [ ] CI matrix build for multiple Ansible versions
     - [ ] Python bindings generation
+
 
 *** Completion Provider Checklist
 - [ ] Register completion provider with =@server.feature=
@@ -94,6 +95,9 @@
 - [ ] Write extensive tests with fixture playbooks
 
 ** Porting Tiers
+:PROPERTIES:
+:ID:       5906aaf2-00e8-4217-be3e-2ada08980acf
+:END:
 
 | Tier | Focus            | Status | Key Files                                        |
 |------+------------------+--------+--------------------------------------------------|
@@ -120,8 +124,5 @@ uv run pytest tests/ -v
 #+end_example
 
 #+RESULTS:
-** TODO remove the static fallback
-  [2026-02-01 Sun]
-  [[id:70f1f2fd-e0ff-4b60-b834-f8f95716fe67][metaprogramming API clients from the OpenAPI doc]]
-  the ts grammar will have the symbols baked-in now
-  ansible is a build-time dependency
+
+** implement all the other providers
