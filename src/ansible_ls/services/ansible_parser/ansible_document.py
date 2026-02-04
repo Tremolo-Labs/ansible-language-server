@@ -181,7 +181,7 @@ class AnsibleDocument:
         self, injection: InjectedRegion, line: int, column: int
     ) -> AnsibleContext:
         """Fallback regex-based Jinja2 context detection."""
-        text = injection.text
+        text = injection.original_text
         # Find cursor offset within injection
         lines = text.split('\n')
         rel_line = line - injection.start_point[0]
@@ -228,23 +228,34 @@ class AnsibleDocument:
         for i, node in enumerate(reversed(path)):
             node_type = node.type
 
+            # Check for block_mapping - look at all keys to identify context
+            if node_type == "block_mapping":
+                keys = self._get_mapping_keys(node)
+
+                # Use required fields to identify context type
+                # Play: has 'hosts' key
+                if "hosts" in keys:
+                    return AnsibleContext.PLAY
+                # Block: has 'block' key
+                if "block" in keys:
+                    return AnsibleContext.BLOCK
+                # Role definition: has 'role' key
+                if "role" in keys:
+                    return AnsibleContext.ROLE
+
             # Check for block_mapping_pair which contains key: value
             if node_type == "block_mapping_pair":
                 key_node = node.child_by_field_name("key")
                 if key_node:
                     key_text = self._get_node_text(key_node)
 
-                    # Task-level keywords
-                    if key_text == "tasks" or key_text == "pre_tasks" or key_text == "post_tasks":
+                    # Task-level keywords - we're inside a task list
+                    if key_text in ("tasks", "pre_tasks", "post_tasks"):
                         return AnsibleContext.TASK
                     if key_text == "handlers":
                         return AnsibleContext.HANDLER
-                    if key_text == "block":
-                        return AnsibleContext.BLOCK
                     if key_text == "roles":
                         return AnsibleContext.ROLE
-                    if key_text == "hosts":
-                        return AnsibleContext.PLAY
 
                     # Check if this looks like a module invocation
                     # (key that's not a known keyword, with dict/value after)
@@ -257,18 +268,39 @@ class AnsibleDocument:
 
         return AnsibleContext.UNKNOWN
 
+    def _get_mapping_keys(self, mapping_node: "Node") -> set[str]:
+        """Get all key names from a block_mapping node."""
+        keys = set()
+        for child in mapping_node.children:
+            if child.type == "block_mapping_pair":
+                key_node = child.child_by_field_name("key")
+                if key_node:
+                    keys.add(self._get_node_text(key_node))
+        return keys
+
     def _get_node_text(self, node: "Node") -> str:
         """Extract text content from a node."""
         return self.content[node.start_byte:node.end_byte]
 
     def _is_likely_module_name(self, key: str) -> bool:
         """Check if a key looks like a module name vs a keyword."""
-        # Known task keywords that aren't modules
+        # Import schema to check known keywords
+        try:
+            from ..ansible_schema import ALL_KEYWORDS
+            if key in ALL_KEYWORDS:
+                return False
+        except ImportError:
+            pass
+
+        # Fallback: Known task keywords that aren't modules
         task_keywords = {
             "name", "when", "register", "vars", "loop", "with_items",
             "with_dict", "with_file", "notify", "tags", "become",
             "become_user", "delegate_to", "ignore_errors", "changed_when",
             "failed_when", "until", "retries", "delay", "no_log",
             "environment", "args", "async", "poll", "throttle",
+            # Play-level keywords
+            "hosts", "gather_facts", "strategy", "serial", "max_fail_percentage",
+            "any_errors_fatal", "connection", "collections", "module_defaults",
         }
         return key not in task_keywords
