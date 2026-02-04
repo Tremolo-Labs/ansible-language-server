@@ -133,22 +133,22 @@ The keyword extraction script extracts data from Ansible internals and tooling, 
 | Magic Vars    | Hardcoded list                 | 20+            | Documented in Ansible   |
 | Callbacks     | =callback_loader.all()=          | 10+ plugins    | For advanced use        |
 #+begin_src python :tangle tools/extract_keywords.py :mkdirp t
-"""Extract Ansible metadata from source for grammar generation.
+"""Extract Ansible metadata and generate typed Python modules.
 
-This script imports Ansible's internal APIs and exports all metadata
-needed for the tree-sitter grammar: keywords, filters, tests, lookups,
-and magic variables.
+Imports Ansible's internal APIs to extract keywords, filters, tests,
+lookups, and magic variables, then generates typed dataclasses for
+IDE features like completion and hover.
 
 Usage:
     python tools/extract_keywords.py
 
 Output:
-    build/ansible_metadata.json - Complete metadata for grammar generation
+    src/ansible_ls/ansible_types/ - Generated Python modules
 """
 
-import json
 import sys
 from pathlib import Path
+from textwrap import dedent
 from typing import Any
 
 #+end_src
@@ -731,89 +731,19 @@ def _serialize_default(value: Any) -> Any:
 
 #+begin_src python :tangle tools/extract_keywords.py :mkdirp t
 
-def main() -> None:
-    """Extract all Ansible metadata and output as JSON."""
-    metadata = {
-        "keywords": extract_keywords(),
-        "keyword_metadata": extract_keyword_metadata(),
-        "jinja_filters": extract_jinja_filters(),
-        "jinja_tests": extract_jinja_tests(),
-        "lookups": extract_lookups(),
-        "magic_variables": extract_magic_variables(),
-        "callbacks": extract_callback_plugins(),
-    }
-
-    # Summary statistics
-    stats = {
-        "play_keywords": len(metadata["keywords"]["play"]),
-        "task_keywords": len(metadata["keywords"]["task"]),
-        "block_keywords": len(metadata["keywords"]["block"]),
-        "role_keywords": len(metadata["keywords"]["role"]),
-        "jinja_filters": len(metadata["jinja_filters"]),
-        "jinja_tests": len(metadata["jinja_tests"]),
-        "lookups": len(metadata["lookups"]),
-        "magic_variables": len(metadata["magic_variables"]),
-        "callbacks": len(metadata["callbacks"]),
-    }
-    metadata["_stats"] = stats
-
-    # Get Ansible version if available
-    try:
-        from ansible.release import __version__ as ansible_version
-
-        metadata["_ansible_version"] = ansible_version
-    except ImportError:
-        metadata["_ansible_version"] = "unknown"
-
-    output = Path("build/ansible_metadata.json")
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(metadata, indent=2, sort_keys=True))
-
-    print(f"Extracted metadata from Ansible {metadata['_ansible_version']}:")
-    for key, count in stats.items():
-        print(f"  {key}: {count}")
-    print(f"\nWrote to {output}")
-
-
-if __name__ == "__main__":
-    main()
+# main() defined after generator functions
 #+end_src
 
-**** Dataclass Generator
+**** Type Generation
 :PROPERTIES:
-:ID:       dataclass-generator
+:ID:       type-generation
 :END:
 
-Generates Python dataclasses and validation sets from =build/ansible_metadata.json=. Run after the extraction script.
+Generates Python dataclasses and validation sets directly from extracted metadata.
 
-#+begin_src python :tangle tools/generate_types.py :mkdirp t
-"""Generate Python dataclasses from extracted Ansible metadata.
+#+begin_src python :tangle tools/extract_keywords.py :mkdirp t
 
-Reads build/ansible_metadata.json and generates:
-- src/ansible_ls/ansible_types/keywords.py - Keyword dataclasses + validation sets
-- src/ansible_ls/ansible_types/jinja.py - Filter/test types
-- src/ansible_ls/ansible_types/lookups.py - Lookup plugin types
-
-Usage:
-    python tools/extract_keywords.py  # First, extract metadata
-    python tools/generate_types.py    # Then, generate types
-"""
-
-import json
-from pathlib import Path
-from textwrap import dedent, indent
-
-METADATA_PATH = Path("build/ansible_metadata.json")
 OUTPUT_DIR = Path("src/ansible_ls/ansible_types")
-
-
-def load_metadata() -> dict:
-    """Load the extracted metadata JSON."""
-    if not METADATA_PATH.exists():
-        raise FileNotFoundError(
-            f"{METADATA_PATH} not found. Run extract_keywords.py first."
-        )
-    return json.loads(METADATA_PATH.read_text())
 
 
 def generate_keywords_module(metadata: dict) -> str:
@@ -822,9 +752,9 @@ def generate_keywords_module(metadata: dict) -> str:
     keyword_meta = metadata.get("keyword_metadata", {})
 
     lines = [
-        '"""Ansible keywords - auto-generated from ansible_metadata.json.',
+        '"""Ansible keywords - auto-generated from Ansible source.',
         '',
-        'DO NOT EDIT. Regenerate with: python tools/generate_types.py',
+        'DO NOT EDIT. Regenerate with: python tools/extract_keywords.py',
         '"""',
         '',
         'from dataclasses import dataclass',
@@ -909,9 +839,9 @@ def generate_jinja_module(metadata: dict) -> str:
     tests = metadata.get("jinja_tests", {})
 
     lines = [
-        '"""Jinja2 filters and tests - auto-generated from ansible_metadata.json.',
+        '"""Jinja2 filters and tests - auto-generated from Ansible source.',
         '',
-        'DO NOT EDIT. Regenerate with: python tools/generate_types.py',
+        'DO NOT EDIT. Regenerate with: python tools/extract_keywords.py',
         '"""',
         '',
         'from dataclasses import dataclass',
@@ -997,9 +927,9 @@ def generate_lookups_module(metadata: dict) -> str:
     lookups = metadata.get("lookups", {})
 
     lines = [
-        '"""Lookup plugins - auto-generated from ansible_metadata.json.',
+        '"""Lookup plugins - auto-generated from Ansible source.',
         '',
-        'DO NOT EDIT. Regenerate with: python tools/generate_types.py',
+        'DO NOT EDIT. Regenerate with: python tools/extract_keywords.py',
         '"""',
         '',
         'from dataclasses import dataclass, field',
@@ -1061,9 +991,9 @@ def generate_magic_vars_module(metadata: dict) -> str:
     magic_vars = metadata.get("magic_variables", {})
 
     lines = [
-        '"""Magic variables - auto-generated from ansible_metadata.json.',
+        '"""Magic variables - auto-generated from Ansible source.',
         '',
-        'DO NOT EDIT. Regenerate with: python tools/generate_types.py',
+        'DO NOT EDIT. Regenerate with: python tools/extract_keywords.py',
         '"""',
         '',
         'from dataclasses import dataclass',
@@ -1109,13 +1039,13 @@ def generate_magic_vars_module(metadata: dict) -> str:
 def generate_init_module() -> str:
     """Generate __init__.py for the ansible_types package."""
     return dedent('''\
-        """Ansible type definitions - auto-generated from ansible_metadata.json.
+        """Ansible type definitions - auto-generated from Ansible source.
 
         These types are generated from Ansible's internal metadata and provide:
         - Validation sets for keywords, filters, tests, lookups
         - Dataclasses with metadata for IDE features (hover, completion)
 
-        Regenerate with: python tools/generate_types.py
+        Regenerate with: python tools/extract_keywords.py
         """
 
         from .keywords import (
@@ -1156,10 +1086,43 @@ def generate_init_module() -> str:
     ''')
 
 
-def main():
-    """Generate all type modules from metadata."""
-    metadata = load_metadata()
+def main() -> None:
+    """Extract Ansible metadata and generate type modules."""
+    # Extract metadata directly from Ansible
+    metadata = {
+        "keywords": extract_keywords(),
+        "keyword_metadata": extract_keyword_metadata(),
+        "jinja_filters": extract_jinja_filters(),
+        "jinja_tests": extract_jinja_tests(),
+        "lookups": extract_lookups(),
+        "magic_variables": extract_magic_variables(),
+        "callbacks": extract_callback_plugins(),
+    }
 
+    # Get Ansible version for reporting
+    try:
+        from ansible.release import __version__ as ansible_version
+    except ImportError:
+        ansible_version = "unknown"
+
+    # Summary statistics
+    stats = {
+        "play_keywords": len(metadata["keywords"]["play"]),
+        "task_keywords": len(metadata["keywords"]["task"]),
+        "block_keywords": len(metadata["keywords"]["block"]),
+        "role_keywords": len(metadata["keywords"]["role"]),
+        "jinja_filters": len(metadata["jinja_filters"]),
+        "jinja_tests": len(metadata["jinja_tests"]),
+        "lookups": len(metadata["lookups"]),
+        "magic_variables": len(metadata["magic_variables"]),
+        "callbacks": len(metadata["callbacks"]),
+    }
+
+    print(f"Extracted metadata from Ansible {ansible_version}:")
+    for key, count in stats.items():
+        print(f"  {key}: {count}")
+
+    # Generate type modules
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     modules = [
@@ -1434,9 +1397,8 @@ class TestKeywordMetadataExtraction:
 class TestMainOutput:
     """Test the main function output structure."""
 
-    def test_main_creates_complete_metadata(self, tmp_path, monkeypatch):
-        """Main should create a complete metadata JSON file."""
-        import json
+    def test_main_creates_type_modules(self, tmp_path, monkeypatch):
+        """Main should create all type modules."""
         from tools import extract_keywords
 
         # Change to temp directory for output
@@ -1446,29 +1408,27 @@ class TestMainOutput:
         extract_keywords.main()
 
         # Check output exists
-        output = tmp_path / "build" / "ansible_metadata.json"
-        assert output.exists()
+        output_dir = tmp_path / "src" / "ansible_ls" / "ansible_types"
+        assert output_dir.exists()
+        assert (output_dir / "__init__.py").exists()
+        assert (output_dir / "keywords.py").exists()
+        assert (output_dir / "jinja.py").exists()
+        assert (output_dir / "lookups.py").exists()
+        assert (output_dir / "magic_vars.py").exists()
 
-        # Check structure
-        metadata = json.loads(output.read_text())
-        assert "keywords" in metadata
-        assert "jinja_filters" in metadata
-        assert "jinja_tests" in metadata
-        assert "lookups" in metadata
-        assert "magic_variables" in metadata
-        assert "_stats" in metadata
-
-    def test_main_includes_version(self, tmp_path, monkeypatch):
-        """Main should include Ansible version in output."""
-        import json
+    def test_generated_modules_are_valid_python(self, tmp_path, monkeypatch):
+        """Generated modules should be valid Python."""
+        import ast
         from tools import extract_keywords
 
         monkeypatch.chdir(tmp_path)
         extract_keywords.main()
 
-        output = tmp_path / "build" / "ansible_metadata.json"
-        metadata = json.loads(output.read_text())
-        assert "_ansible_version" in metadata
+        output_dir = tmp_path / "src" / "ansible_ls" / "ansible_types"
+        for py_file in output_dir.glob("*.py"):
+            content = py_file.read_text()
+            # Should parse without error
+            ast.parse(content)
 #+end_src
 
 **** Module Metadata

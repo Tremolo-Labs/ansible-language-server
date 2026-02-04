@@ -244,9 +244,8 @@ class TestKeywordMetadataExtraction:
 class TestMainOutput:
     """Test the main function output structure."""
 
-    def test_main_creates_complete_metadata(self, tmp_path, monkeypatch):
-        """Main should create a complete metadata JSON file."""
-        import json
+    def test_main_creates_type_modules(self, tmp_path, monkeypatch):
+        """Main should create all type modules."""
         from tools import extract_keywords
 
         # Change to temp directory for output
@@ -256,26 +255,24 @@ class TestMainOutput:
         extract_keywords.main()
 
         # Check output exists
-        output = tmp_path / "build" / "ansible_metadata.json"
-        assert output.exists()
+        output_dir = tmp_path / "src" / "ansible_ls" / "ansible_types"
+        assert output_dir.exists()
+        assert (output_dir / "__init__.py").exists()
+        assert (output_dir / "keywords.py").exists()
+        assert (output_dir / "jinja.py").exists()
+        assert (output_dir / "lookups.py").exists()
+        assert (output_dir / "magic_vars.py").exists()
 
-        # Check structure
-        metadata = json.loads(output.read_text())
-        assert "keywords" in metadata
-        assert "jinja_filters" in metadata
-        assert "jinja_tests" in metadata
-        assert "lookups" in metadata
-        assert "magic_variables" in metadata
-        assert "_stats" in metadata
-
-    def test_main_includes_version(self, tmp_path, monkeypatch):
-        """Main should include Ansible version in output."""
-        import json
+    def test_generated_modules_are_valid_python(self, tmp_path, monkeypatch):
+        """Generated modules should be valid Python."""
+        import ast
         from tools import extract_keywords
 
         monkeypatch.chdir(tmp_path)
         extract_keywords.main()
 
-        output = tmp_path / "build" / "ansible_metadata.json"
-        metadata = json.loads(output.read_text())
-        assert "_ansible_version" in metadata
+        output_dir = tmp_path / "src" / "ansible_ls" / "ansible_types"
+        for py_file in output_dir.glob("*.py"):
+            content = py_file.read_text()
+            # Should parse without error
+            ast.parse(content)

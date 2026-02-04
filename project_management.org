@@ -20,9 +20,8 @@
      - [ ] injection queries for Jinja2 context (filter vs test vs var)
      - [ ] tree-sitter queries for ansible datatypes
    - [-] [[id:data-models][Data Models]]
-     - [X] extraction script (tools/extract_keywords.py)
-     - [X] type generator (tools/generate_types.py)
-     - [ ] run extraction + generation, verify output
+     - [X] unified extract + generate script (tools/extract_keywords.py)
+     - [X] run and verify output
    - [ ] [[id:settings-service][SettingsManager]] - settings caching and LSP config
    - [ ] [[id:workspace-service][WorkspaceManager]] - multi-folder context
    - [ ] [[id:docs-library][DocsLibrary]] - module documentation cache
