@@ -774,6 +774,18 @@ def generate_keywords_module(metadata: dict) -> str:
     lines.append('')
     lines.append('ALL_KEYWORDS: frozenset[str] = PLAY_KEYWORDS | TASK_KEYWORDS | BLOCK_KEYWORDS | ROLE_KEYWORDS')
     lines.append('')
+
+    # Generate required keyword sets (fingerprints for node identification)
+    lines.append('')
+    lines.append('# Required keywords - fingerprints for identifying node types')
+    for context in ["play", "task", "block", "role"]:
+        ctx_meta = keyword_meta.get(context, {})
+        required = [name for name, info in ctx_meta.items() if info.get("required")]
+        set_name = f"{context.upper()}_REQUIRED"
+        formatted = ", ".join(f'"{k}"' for k in sorted(required))
+        lines.append(f'{set_name}: frozenset[str] = frozenset({{{formatted}}})')
+
+    lines.append('')
     lines.append('')
 
     # Generate KeywordInfo dataclass
@@ -810,6 +822,16 @@ def generate_keywords_module(metadata: dict) -> str:
     lines.append('')
     lines.append('')
 
+    # Generate context lookup by keyword
+    lines.extend([
+        '# Reverse lookup: keyword -> contexts where it appears',
+        'KEYWORD_CONTEXTS: dict[str, set[str]] = {}',
+        'for _kw, _info in KEYWORD_INFO.items():',
+        '    KEYWORD_CONTEXTS.setdefault(_kw, set()).add(_info.context)',
+        '',
+        '',
+    ])
+
     # Helper functions
     lines.extend([
         'def is_valid_keyword(name: str, context: str = None) -> bool:',
@@ -828,6 +850,26 @@ def generate_keywords_module(metadata: dict) -> str:
         'def get_keyword_info(name: str) -> Optional[KeywordInfo]:',
         '    """Get metadata for a keyword."""',
         '    return KEYWORD_INFO.get(name)',
+        '',
+        '',
+        'def identify_context(keys: set[str]) -> Optional[str]:',
+        '    """Identify context type from a set of keys in a mapping.',
+        '',
+        '    Uses required keywords as fingerprints:',
+        '    - Play requires "hosts"',
+        '    - Block requires "block"',
+        '    - etc.',
+        '    """',
+        '    if PLAY_REQUIRED and PLAY_REQUIRED <= keys:',
+        '        return "play"',
+        '    if BLOCK_REQUIRED and BLOCK_REQUIRED <= keys:',
+        '        return "block"',
+        '    if ROLE_REQUIRED and ROLE_REQUIRED <= keys:',
+        '        return "role"',
+        '    # Task has no required keys, detect by presence of task keywords',
+        '    if keys & TASK_KEYWORDS:',
+        '        return "task"',
+        '    return None',
     ])
 
     return '\n'.join(lines)
@@ -1043,6 +1085,7 @@ def generate_init_module() -> str:
 
         These types are generated from Ansible's internal metadata and provide:
         - Validation sets for keywords, filters, tests, lookups
+        - Required keyword sets (fingerprints for node identification)
         - Dataclasses with metadata for IDE features (hover, completion)
 
         Regenerate with: python tools/extract_keywords.py
@@ -1050,8 +1093,9 @@ def generate_init_module() -> str:
 
         from .keywords import (
             PLAY_KEYWORDS, TASK_KEYWORDS, BLOCK_KEYWORDS, ROLE_KEYWORDS,
-            ALL_KEYWORDS, KeywordInfo, KEYWORD_INFO,
-            is_valid_keyword, get_keyword_info,
+            PLAY_REQUIRED, TASK_REQUIRED, BLOCK_REQUIRED, ROLE_REQUIRED,
+            ALL_KEYWORDS, KEYWORD_CONTEXTS, KeywordInfo, KEYWORD_INFO,
+            is_valid_keyword, get_keyword_info, identify_context,
         )
         from .jinja import (
             FILTER_NAMES, TEST_NAMES, FILTERS, TESTS,
@@ -1070,8 +1114,9 @@ def generate_init_module() -> str:
         __all__ = [
             # Keywords
             "PLAY_KEYWORDS", "TASK_KEYWORDS", "BLOCK_KEYWORDS", "ROLE_KEYWORDS",
-            "ALL_KEYWORDS", "KeywordInfo", "KEYWORD_INFO",
-            "is_valid_keyword", "get_keyword_info",
+            "PLAY_REQUIRED", "TASK_REQUIRED", "BLOCK_REQUIRED", "ROLE_REQUIRED",
+            "ALL_KEYWORDS", "KEYWORD_CONTEXTS", "KeywordInfo", "KEYWORD_INFO",
+            "is_valid_keyword", "get_keyword_info", "identify_context",
             # Jinja
             "FILTER_NAMES", "TEST_NAMES", "FILTERS", "TESTS",
             "JinjaFilter", "JinjaTest",
@@ -2310,6 +2355,7 @@ An AnsibleDocument holds the parsed tree-sitter AST along with
 extracted semantic information about the Ansible content.
 """
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Optional, TYPE_CHECKING
@@ -2429,15 +2475,100 @@ class AnsibleDocument:
     def _get_jinja_context(
         self, injection: InjectedRegion, line: int, column: int
     ) -> AnsibleContext:
-        """Determine context within a Jinja2 expression."""
+        """Determine context within a Jinja2 expression.
+
+        Jinja2 has several distinct contexts:
+        - Variable: {{ variable_name }}
+        - Filter: {{ value | filter_name }}
+        - Test: {% if value is test_name %}
+        - Lookup: {{ lookup('plugin_name', ...) }}
+        """
+        # If no Jinja2 tree available, use regex fallback
         if injection.tree is None:
+            return self._get_jinja_context_regex(injection, line, column)
+
+        # Convert document position to injection-relative position
+        rel_line = line - injection.start_point[0]
+        if rel_line == 0:
+            rel_col = column - injection.start_point[1]
+        else:
+            rel_col = column
+
+        # Get the node at position within the Jinja2 tree
+        node = self._get_node_at_point(injection.tree.root_node, rel_line, rel_col)
+        if node is None:
             return AnsibleContext.JINJA_EXPRESSION
 
-        # TODO: Query the Jinja2 tree to determine if we're in:
-        # - A variable reference: {{ var }}
-        # - A filter: {{ var | filter }}
-        # - A test: {% if var is test %}
+        # Walk up the tree to determine context
+        current = node
+        while current is not None:
+            node_type = current.type
+
+            # Filter context: cursor after a pipe operator
+            if node_type == "filter":
+                return AnsibleContext.JINJA_FILTER
+            if node_type == "filter_name":
+                return AnsibleContext.JINJA_FILTER
+
+            # Test context: cursor after "is" keyword
+            if node_type == "test":
+                return AnsibleContext.JINJA_TEST
+            if node_type == "test_name":
+                return AnsibleContext.JINJA_TEST
+
+            # Variable/identifier context
+            if node_type == "identifier" or node_type == "variable":
+                # Check if parent is a filter or test
+                parent = current.parent
+                if parent and parent.type in ("filter", "test"):
+                    continue  # Let parent iteration handle it
+                return AnsibleContext.JINJA_VARIABLE
+
+            current = current.parent
+
         return AnsibleContext.JINJA_EXPRESSION
+
+    def _get_jinja_context_regex(
+        self, injection: InjectedRegion, line: int, column: int
+    ) -> AnsibleContext:
+        """Fallback regex-based Jinja2 context detection."""
+        text = injection.text
+        # Find cursor offset within injection
+        lines = text.split('\n')
+        rel_line = line - injection.start_point[0]
+        if rel_line == 0:
+            offset = column - injection.start_point[1]
+        else:
+            offset = sum(len(l) + 1 for l in lines[:rel_line]) + column
+
+        # Get text before cursor
+        before = text[:offset] if offset <= len(text) else text
+
+        # Check for filter context: "| " before cursor
+        if re.search(r'\|\s*\w*$', before):
+            return AnsibleContext.JINJA_FILTER
+
+        # Check for test context: "is " before cursor
+        if re.search(r'\bis\s+\w*$', before):
+            return AnsibleContext.JINJA_TEST
+
+        # Default to variable context
+        return AnsibleContext.JINJA_VARIABLE
+
+    def _get_node_at_point(self, root: "Node", line: int, column: int) -> Optional["Node"]:
+        """Get deepest node at a point within a tree."""
+        point = (line, column)
+
+        def walk(node):
+            if node.start_point <= point <= node.end_point:
+                for child in node.children:
+                    result = walk(child)
+                    if result:
+                        return result
+                return node
+            return None
+
+        return walk(root)
 
     def _analyze_yaml_context(self, path: list["Node"]) -> AnsibleContext:
         """Analyze YAML node path to determine Ansible context."""
@@ -2753,62 +2884,233 @@ class ParserService:
 #+begin_src python :tangle src/ansible_ls/ansible_parser/queries.py :mkdirp t
 """Tree-sitter queries for Ansible-specific patterns.
 
-These queries help identify Ansible structures within the YAML AST:
-- Play definitions
-- Task lists
-- Module invocations
-- Variable references
+All queries are generated from ansible_types data to stay in sync
+with extracted Ansible metadata. Required keywords serve as fingerprints
+for identifying node types.
 """
 
-# Query to find play-level mappings (items in the top-level list with 'hosts' key)
-PLAY_QUERY = """
-(document
-  (block_node
-    (block_sequence
-      (block_sequence_item
-        (block_node
-          (block_mapping
-            (block_mapping_pair
-              key: (flow_node) @play_key
-              (#match? @play_key "^hosts$"))))))))
-"""
+from typing import Optional
 
-# Query to find task definitions within plays
-TASK_QUERY = """
+from ..ansible_types import (
+    PLAY_KEYWORDS, TASK_KEYWORDS, BLOCK_KEYWORDS, ROLE_KEYWORDS,
+    PLAY_REQUIRED, TASK_REQUIRED, BLOCK_REQUIRED, ROLE_REQUIRED,
+    FILTER_NAMES, TEST_NAMES, LOOKUP_NAMES,
+)
+
+
+def _to_pattern(keywords: frozenset[str]) -> str:
+    """Convert keywords to regex alternation pattern."""
+    return "|".join(sorted(keywords))
+
+
+def _mapping_with_key(key_pattern: str, capture: str = "mapping") -> str:
+    """Generate query for a mapping containing specific key(s)."""
+    return f'''
+(block_mapping
+  (block_mapping_pair
+    key: (flow_node) @_key
+    (#match? @_key "^({key_pattern})$"))) @{capture}
+'''
+
+
+def _key_value_pair(key_pattern: str, capture: str = "key") -> str:
+    """Generate query matching key-value pairs by key pattern."""
+    return f'''
 (block_mapping_pair
-  key: (flow_node) @tasks_key
-  (#match? @tasks_key "^(tasks|pre_tasks|post_tasks|handlers)$")
-  value: (block_node
-    (block_sequence
-      (block_sequence_item) @task)))
-"""
+  key: (flow_node) @{capture}
+  (#match? @{capture} "^({key_pattern})$"))
+'''
 
-# Query to find module invocations (key-value pairs that aren't known keywords)
-MODULE_QUERY = """
+
+def _sequence_under_key(key_pattern: str, capture: str = "list") -> str:
+    """Generate query for sequence values under specific keys."""
+    return f'''
+(block_mapping_pair
+  key: (flow_node) @_key
+  (#match? @_key "^({key_pattern})$")
+  value: (block_node
+    (block_sequence) @{capture}))
+'''
+
+
+# ============================================================================
+# Fingerprint queries - identify node types by required keywords
+# ============================================================================
+
+def play_query() -> str:
+    """Query identifying plays by required 'hosts' key."""
+    if not PLAY_REQUIRED:
+        return ""
+    return _mapping_with_key(_to_pattern(PLAY_REQUIRED), "play")
+
+
+def block_query() -> str:
+    """Query identifying blocks by required 'block' key."""
+    if not BLOCK_REQUIRED:
+        return ""
+    return _mapping_with_key(_to_pattern(BLOCK_REQUIRED), "block")
+
+
+def role_query() -> str:
+    """Query identifying role entries by required keys."""
+    if not ROLE_REQUIRED:
+        return ""
+    return _mapping_with_key(_to_pattern(ROLE_REQUIRED), "role")
+
+
+# ============================================================================
+# Keyword queries - match valid keywords in each context
+# ============================================================================
+
+def play_keyword_query() -> str:
+    """Query matching play-level keywords."""
+    return _key_value_pair(_to_pattern(PLAY_KEYWORDS), "play_key")
+
+
+def task_keyword_query() -> str:
+    """Query matching task-level keywords."""
+    return _key_value_pair(_to_pattern(TASK_KEYWORDS), "task_key")
+
+
+def block_keyword_query() -> str:
+    """Query matching block-level keywords."""
+    return _key_value_pair(_to_pattern(BLOCK_KEYWORDS), "block_key")
+
+
+def role_keyword_query() -> str:
+    """Query matching role-level keywords."""
+    return _key_value_pair(_to_pattern(ROLE_KEYWORDS), "role_key")
+
+
+# ============================================================================
+# Structural queries - task lists, roles lists, etc.
+# ============================================================================
+
+def task_list_query() -> str:
+    """Query for task list containers (tasks/pre_tasks/post_tasks/handlers)."""
+    task_list_keys = {"tasks", "pre_tasks", "post_tasks", "handlers"}
+    return _sequence_under_key(_to_pattern(task_list_keys), "task_list")
+
+
+def roles_list_query() -> str:
+    """Query for roles list in a play."""
+    return _sequence_under_key("roles", "roles_list")
+
+
+def block_sections_query() -> str:
+    """Query for block/rescue/always sections."""
+    return _sequence_under_key("block|rescue|always", "block_section")
+
+
+# ============================================================================
+# Module and generic queries
+# ============================================================================
+
+def module_query() -> str:
+    """Query for potential module invocations (any key-value pair)."""
+    return '''
 (block_mapping_pair
   key: (flow_node) @module_name
   value: (_) @module_args)
-"""
+'''
 
-# Query to find Jinja2 expressions in strings
-JINJA_QUERY = """
+
+def string_query() -> str:
+    """Query for all YAML string types."""
+    return '''
 [
   (double_quote_scalar) @string
   (single_quote_scalar) @string
   (block_scalar) @string
+  (plain_scalar) @string
 ]
-"""
+'''
+
+
+def jinja_string_query() -> str:
+    """Query for strings containing Jinja2 syntax."""
+    return r'''
+[
+  (double_quote_scalar) @jinja_string
+  (single_quote_scalar) @jinja_string
+  (block_scalar) @jinja_string
+  (plain_scalar) @jinja_string
+]
+(#match? @jinja_string "(\{\{|\{%|\{#)")
+'''
+
+
+# ============================================================================
+# Jinja2 queries (for use with Jinja2 tree-sitter grammar)
+# ============================================================================
+
+def filter_query() -> str:
+    """Query for valid Jinja2 filter names."""
+    return f'''
+(filter_name) @filter
+(#match? @filter "^({_to_pattern(FILTER_NAMES)})$")
+'''
+
+
+def test_query() -> str:
+    """Query for valid Jinja2 test names."""
+    return f'''
+(test_name) @test
+(#match? @test "^({_to_pattern(TEST_NAMES)})$")
+'''
+
+
+def lookup_query() -> str:
+    """Query for lookup() calls with valid plugin names."""
+    return f'''
+(call
+  function: (identifier) @fn
+  (#eq? @fn "lookup")
+  arguments: (argument_list
+    (string) @lookup_name
+    (#match? @lookup_name "^['\"]({_to_pattern(LOOKUP_NAMES)})['\"]$")))
+'''
+
+
+# ============================================================================
+# Query registry - all queries generated on demand
+# ============================================================================
+
+QUERY_FUNCTIONS = {
+    # Fingerprint queries
+    "play": play_query,
+    "block": block_query,
+    "role": role_query,
+    # Keyword queries
+    "play_keyword": play_keyword_query,
+    "task_keyword": task_keyword_query,
+    "block_keyword": block_keyword_query,
+    "role_keyword": role_keyword_query,
+    # Structural queries
+    "task_list": task_list_query,
+    "roles_list": roles_list_query,
+    "block_sections": block_sections_query,
+    # Generic queries
+    "module": module_query,
+    "string": string_query,
+    "jinja_string": jinja_string_query,
+    # Jinja2 queries
+    "filter": filter_query,
+    "test": test_query,
+    "lookup": lookup_query,
+}
+
+
+def get_query(name: str) -> Optional[str]:
+    """Get a query by name."""
+    if name in QUERY_FUNCTIONS:
+        return QUERY_FUNCTIONS[name]()
+    return None
 
 
 def get_query_for_context(context_type: str) -> str:
     """Get the appropriate query for a context type."""
-    queries = {
-        "play": PLAY_QUERY,
-        "task": TASK_QUERY,
-        "module": MODULE_QUERY,
-        "jinja": JINJA_QUERY,
-    }
-    return queries.get(context_type, "")
+    return get_query(context_type) or ""
 #+end_src
 
 ****** TODO injection queries

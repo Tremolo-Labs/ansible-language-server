@@ -14,11 +14,11 @@
 :PROPERTIES:
 :ID:       99451843-ca6a-4123-abc7-7db9c6e525ad
 :END:
-   - [-] [[id:yaml-parsing][Parsing]] NEXT
+   - [X] [[id:yaml-parsing][Parsing]]
      - [X] basic service for providers to query (ParserService, AnsibleDocument)
      - [X] injection detection for Jinja2 (regex-based, tree optional)
-     - [ ] injection queries for Jinja2 context (filter vs test vs var)
-     - [ ] tree-sitter queries for ansible datatypes
+     - [X] injection queries for Jinja2 context (filter vs test vs var)
+     - [X] tree-sitter queries for ansible datatypes
    - [-] [[id:data-models][Data Models]]
      - [X] unified extract + generate script (tools/extract_keywords.py)
      - [X] run and verify output
