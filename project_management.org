@@ -14,10 +14,15 @@
 :PROPERTIES:
 :ID:       99451843-ca6a-4123-abc7-7db9c6e525ad
 :END:
-   - [ ] [[id:yaml-parsing][Parsing]] NEXT
-     - [ ] injection queries for Jinja2 (+ python?)
-     - [ ] basic queries for ansible datatypes
-     - [ ] basic service for providers to query
+   - [-] [[id:yaml-parsing][Parsing]] NEXT
+     - [X] basic service for providers to query (ParserService, AnsibleDocument)
+     - [X] injection detection for Jinja2 (regex-based, tree optional)
+     - [ ] injection queries for Jinja2 context (filter vs test vs var)
+     - [ ] tree-sitter queries for ansible datatypes
+   - [-] [[id:data-models][Data Models]]
+     - [X] extraction script (tools/extract_keywords.py)
+     - [X] type generator (tools/generate_types.py)
+     - [ ] run extraction + generation, verify output
    - [ ] [[id:settings-service][SettingsManager]] - settings caching and LSP config
    - [ ] [[id:workspace-service][WorkspaceManager]] - multi-folder context
    - [ ] [[id:docs-library][DocsLibrary]] - module documentation cache
