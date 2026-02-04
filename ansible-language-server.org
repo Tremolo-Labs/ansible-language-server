@@ -18,15 +18,15 @@ build-backend = "hatchling.build"
 name = "ansible-language-server"
 version = "0.1.0"
 description = "Language Server Protocol implementation for Ansible"
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.10"
 readme = "README.md"
 license = {text = "GPL3"}
 dependencies = [
     "pygls>=1.3.0",
-    "lsprotocol>=2023.0.0",
     "ruamel.yaml>=0.18.0",
     "attrs>=23.0.0",
     "tree-sitter>=0.23.0",
+    "lsprotocol>=2025.0.0",
 ]
 
 [project.optional-dependencies]
@@ -141,11 +141,12 @@ Port of src/utils/yaml.ts
 from typing import Optional
 
 import tree_sitter_yaml
-import tree-sitter-jinja
+import tree-sitter-jinja # fixme 
 from tree_sitter import Language, Parser
 
 # Initialize tree-sitter YAML parser (tree-sitter 0.23+ API)
-_language = Language(tree_sitter_ansible.language())
+_yaml = Language(tree_sitter_yaml.language())
+_jinja = Language(tree_sitter_yaml.language()) # hope I'm not pwnd
 _parser = Parser(_language)
 
 
@@ -205,10 +206,6 @@ def get_path_to_position(tree, line: int, column: int) -> list:
 
 
 #+end_src
-
-
-
-
 
 ***** TODO injection queries
 :PROPERTIES:
@@ -1348,18 +1345,6 @@ from typing import Optional
 
 
 @dataclass
-class ExecutionEnvironmentSettings:
-    """Execution environment (container) settings."""
-    enabled: bool = False
-    container_engine: str = "auto"  # "auto", "podman", "docker"
-    image: str = ""
-    pull_policy: str = "missing"  # "always", "missing", "never", "tag"
-    pull_arguments: str = ""
-    container_options: str = ""
-    volume_mounts: list[dict] = field(default_factory=list)
-
-
-@dataclass
 class CompletionSettings:
     """Completion provider settings."""
     provide_redirect_modules: bool = True
@@ -2366,7 +2351,7 @@ class TestYamlParsing:
         assert "key" in node.text.decode()
 #+end_src
 
-
+nnn
 ** Appendix
 :PROPERTIES:
 :VISIBILITY: folded
@@ -2431,8 +2416,12 @@ __all__ = ["get_node_at_position", "parse_yaml"]
 ** TODO multiple yaml grammars
   [2026-02-03 Tue]
   [[id:5a3be352-f776-4bc1-b080-e6c0651cfffd][Why tree-sitter]]
-  https://github.com/cathaysia/tree-sitter-jinja/releases/tag/v0.11.1 is more recent and I'll start here
+  https://github.com/cathaysia/tree-sitter-jinja/releases/tag/v0.11.1 is more recent and I'll start here. It doesn't appear to be on pipi.
 
-  https://github.com/dbt-labs/tree-sitter-jinja2/releases/tag/v0.1.0 was last released in '21 but is owned by a shop.
+  https://github.com/dbt-labs/tree-sitter-jinja2/releases/tag/v0.1.0 was last released in '21 but is owned by a shop.. Ugh, it's not installing cuz it was made from an old tree-sitter.
 
-  Pull them both.
+
+
+  I found a third one on pypi but it's not published on github, and the homepage is broken. Super sus.
+
+  But I installed it at tree_sitter_jinja.

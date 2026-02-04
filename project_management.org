@@ -4,91 +4,36 @@
 :ID:       47687761-e532-460c-9bec-ea6a1708fd0a
 :END:
 
-** Status Dashboard
-:PROPERTIES:
-:ID:       f55cc7a6-9353-4160-ae7c-c0e93a059844
-:END:
-
-| Component             | Status  | Lines | Documentation             |
-|-----------------------+---------+-------+---------------------------|
-| *Utils*                 |         |       |                           |
-| [[file:src/ansible_ls/utils/ansible_keywords.py][ansible_keywords.py]]   | ✅ DONE | ~670  | [[id:ansible-keywords][Ansible Keywords]]          |
-| [[file:src/ansible_ls/utils/ansible_dynamic.py][ansible_dynamic.py]]    | ✅ DONE | ~260  | [[id:ansible-keywords][Ansible Keywords]]          |
-| [[file:src/ansible_ls/utils/yaml_utils.py][ansible_parser.py]]     | ✅ DONE | ~180  | [[id:yaml-parsing][Ansible Parsing]]           |
-| docsParser.py         | TODO    | ~200  | [[id:docs-library][Documentation Library]]     |
-| docsFinder.py         | TODO    | ~150  | [[id:docs-library][Documentation Library]]     |
-| commandRunner.py      | TODO    | ~100  | [[id:external-tools][External Tool Integration]] |
-|-----------------------+---------+-------+---------------------------|
-| *Models*                |         |       |                           |
-| [[file:src/ansible_ls/models/module.py][module.py]]             | ✅ DONE | ~70   | [[id:module-metadata][Module Metadata]]           |
-| settings.py           | TODO    | ~100  | [[id:extension-settings][Extension Settings]]        |
-|-----------------------+---------+-------+---------------------------|
-| *Services*              |         |       |                           |
-| settings_manager.py   | TODO    | ~150  | [[id:settings-service][Settings Service]]          |
-| workspace_manager.py  | TODO    | ~240  | [[id:workspace-service][Workspace Service]]         |
-| docs_library.py       | TODO    | ~275  | [[id:docs-library][Documentation Library]]     |
-| validation_manager.py | TODO    | ~180  | [[id:validation-service][Validation Service]]        |
-| ansible_lint.py       | TODO    | ~200  | [[id:validation-service][Validation Service]]        |
-| execution_env.py      | TODO    | ~536  | [[id:container-management][Container Management]]      |
-|-----------------------+---------+-------+---------------------------|
-| *Providers*             |         |       |                           |
-| hover.py              | TODO    | ~150  | [[id:hover-provider][Hover Provider]]            |
-| definition.py         | TODO    | ~120  | [[id:definition-provider][Definition Provider]]       |
-| completion.py         | TODO    | ~666  | [[id:completion-provider][Completion Provider]]       |
-| validation.py         | TODO    | ~180  | [[id:validation-service][Validation Service]]        |
-| semantic_tokens.py    | TODO    | ~200  | (not yet documented)      |
-|-----------------------+---------+-------+---------------------------|
-| *Server*                |         |       |                           |
-| [[file:src/ansible_ls/server.py][server.py]]             | ✅ DONE | ~15   | [[id:server-entry-point][Server Entry Point]]        |
-|-----------------------+---------+-------+---------------------------|
-| *Grammar*               |         |       |                           |
-| [[file:tools/extract_keywords.py][extract_keywords.py]]   | DESIGN  | ~80   | [[id:65a482d4-c8c4-493b-ad0f-bf467a2cffbc][Custom Grammar]]            |
-| [[file:tools/compose_grammar.py][compose_grammar.py]]    | DESIGN  | ~80   | [[id:65a482d4-c8c4-493b-ad0f-bf467a2cffbc][Custom Grammar]]            |
-
-*Tests:* 59 passing (27 dynamic keyword tests, 23 static keyword tests, 9 YAML utils tests)
-
 ** TODO Progress
 :PROPERTIES:
 :ID:       042d8753-3757-48a6-b5a0-251196171795
 :END:
 
-*** Completed
-1. [X] Initialize Python project with =uv init= → [[id:project-configuration][Project Configuration]]
-2. [X] Research tree-sitter for YAML AST → [[id:yaml-parsing][YAML Parsing]]
-3. [X] Research podman-py for container management → [[id:container-management][Container Management]]
-4. [X] Research Ansible Python APIs → [[id:ansible-keywords][Ansible Keywords]]
-5. [X] Fix pyproject.toml build-system → [[id:project-configuration][Project Configuration]]
-6. [X] Set up pytest infrastructure → [[id:test-infrastructure][Test Infrastructure]]
-7. [X] Port utils/ansible.ts keyword definitions → [[id:ansible-keywords][Ansible Keywords]]
-8. [X] Port interfaces/module.ts to dataclasses → [[id:module-metadata][Module Metadata]]
-9. [X] Port utils/yaml.ts using tree-sitter-yaml → [[id:yaml-parsing][YAML Parsing]]
 
-*** In Progress
-
-**** TODO Implement services
+*** TODO Implement services
 :PROPERTIES:
 :ID:       99451843-ca6a-4123-abc7-7db9c6e525ad
 :END:
+   - [ ] [[id:yaml-parsing][Parsing]] NEXT
+     - [ ] injection queries for Jinja2 (+ python?)
+     - [ ] basic queries for ansible datatypes
+     - [ ] basic service for providers to query
    - [ ] [[id:settings-service][SettingsManager]] - settings caching and LSP config
    - [ ] [[id:workspace-service][WorkspaceManager]] - multi-folder context
    - [ ] [[id:docs-library][DocsLibrary]] - module documentation cache
    - [ ] [[id:validation-service][ValidationManager]] - ansible-lint integration
-**** TODO Tangle and implement providers
+
+*** TODO Implement providers
 :PROPERTIES:
 :ID:       fb9a12cd-cf78-4d43-8130-eef19050a1e9
 :END:
    - [ ] [[id:hover-provider][HoverProvider]] - keyword and module docs on hover
    - [ ] [[id:definition-provider][DefinitionProvider]] - go-to-definition for roles/includes
    - [ ] [[id:completion-provider][CompletionProvider]] - context-aware completions
-**** TODO [[id:65a482d4-c8c4-493b-ad0f-bf467a2cffbc][Custom tree-sitter-ansible grammar]]
+**** TODO implement all the other providers
 :PROPERTIES:
-:ID:       a9c72653-4bb7-4892-bc8f-b627f6e9f404
+:ID:       8dbf8991-396b-4d72-98a5-c2d2bd8a2bd2
 :END:
-   - [ ] Keyword and other metadata extraction from Ansible source
-   - [ ] Grammar definition (Ansible)
-   - [ ] injection queries for YAML + Jinja2 + python
-   - [ ] CI matrix build for multiple Ansible versions
-   - [ ] Python bindings generation
 
 *** TODO Completion Provider Checklist
 :PROPERTIES:
@@ -104,20 +49,6 @@
 - [ ] Implement completion resolve for lazy documentation
 - [ ] Write extensive tests with fixture playbooks
 
-** Porting Tiers
-:PROPERTIES:
-:ID:       5906aaf2-00e8-4217-be3e-2ada08980acf
-:END:
-
-| Tier | Focus            | Status | Key Files                                        |
-|------+------------------+--------+--------------------------------------------------|
-|    1 | Foundation       | DONE   | interfaces/module.ts, utils/ansible.ts           |
-|    2 | Core Utils       | DONE   | utils/yaml.ts                                    |
-|    3 | Services         | TODO   | settingsManager, workspaceManager, docsLibrary   |
-|    4 | Complex Services | TODO   | executionEnvironment.ts (536 lines)              |
-|    5 | Providers        | TODO   | completionProvider.ts (666 lines) \m/            |
-|    6 | LSP Core         | TODO   | ansibleLanguageService.ts, server.ts             |
-|    7 | Custom Grammar   | DESIGN | [[id:65a482d4-c8c4-493b-ad0f-bf467a2cffbc][tree-sitter-ansible]] (YAML+Jinja2+keywords)       |
 
 ** TODO Running Tests
 :PROPERTIES:
@@ -131,18 +62,10 @@ uv run pytest tests/ -v
 
 #+RESULTS:
 #+begin_example
+ImportError while loading conftest '/home/chad/code/ansible-language-server/tests/conftest.py'.
+tests/conftest.py:9: in <module>
+    from lsprotocol import types
+E   ModuleNotFoundError: No module named 'lsprotocol'
+[ Babel evaluation exited with code 4 ]
 #+end_example
 
-#+RESULTS:
-
-** TODO implement all the other providers
-:PROPERTIES:
-:ID:       8dbf8991-396b-4d72-98a5-c2d2bd8a2bd2
-:END:
-
-** TODO generate those cute UML diagrams from the actual code or other hard data where possible
-:PROPERTIES:
-:ID:       14d05e75-330c-4843-8214-b09fffdb6d44
-:END:
-
-[[id:b4c4ae5e-6355-4d2e-9555-0569a808342a][Build Pipeline]]

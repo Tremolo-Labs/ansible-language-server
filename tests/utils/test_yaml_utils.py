@@ -10,7 +10,6 @@ from ansible_ls.utils.yaml_utils import (
     parse_yaml,
     get_node_at_position,
     get_path_to_position,
-    AncestryBuilder,
 )
 
 

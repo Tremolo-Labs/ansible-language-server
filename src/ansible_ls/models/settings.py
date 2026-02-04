@@ -8,18 +8,6 @@ from typing import Optional
 
 
 @dataclass
-class ExecutionEnvironmentSettings:
-    """Execution environment (container) settings."""
-    enabled: bool = False
-    container_engine: str = "auto"  # "auto", "podman", "docker"
-    image: str = ""
-    pull_policy: str = "missing"  # "always", "missing", "never", "tag"
-    pull_arguments: str = ""
-    container_options: str = ""
-    volume_mounts: list[dict] = field(default_factory=list)
-
-
-@dataclass
 class CompletionSettings:
     """Completion provider settings."""
     provide_redirect_modules: bool = True
