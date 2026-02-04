@@ -4,6 +4,7 @@ An AnsibleDocument holds the parsed tree-sitter AST along with
 extracted semantic information about the Ansible content.
 """
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Optional, TYPE_CHECKING
@@ -123,15 +124,100 @@ class AnsibleDocument:
     def _get_jinja_context(
         self, injection: InjectedRegion, line: int, column: int
     ) -> AnsibleContext:
-        """Determine context within a Jinja2 expression."""
+        """Determine context within a Jinja2 expression.
+
+        Jinja2 has several distinct contexts:
+        - Variable: {{ variable_name }}
+        - Filter: {{ value | filter_name }}
+        - Test: {% if value is test_name %}
+        - Lookup: {{ lookup('plugin_name', ...) }}
+        """
+        # If no Jinja2 tree available, use regex fallback
         if injection.tree is None:
+            return self._get_jinja_context_regex(injection, line, column)
+
+        # Convert document position to injection-relative position
+        rel_line = line - injection.start_point[0]
+        if rel_line == 0:
+            rel_col = column - injection.start_point[1]
+        else:
+            rel_col = column
+
+        # Get the node at position within the Jinja2 tree
+        node = self._get_node_at_point(injection.tree.root_node, rel_line, rel_col)
+        if node is None:
             return AnsibleContext.JINJA_EXPRESSION
 
-        # TODO: Query the Jinja2 tree to determine if we're in:
-        # - A variable reference: {{ var }}
-        # - A filter: {{ var | filter }}
-        # - A test: {% if var is test %}
+        # Walk up the tree to determine context
+        current = node
+        while current is not None:
+            node_type = current.type
+
+            # Filter context: cursor after a pipe operator
+            if node_type == "filter":
+                return AnsibleContext.JINJA_FILTER
+            if node_type == "filter_name":
+                return AnsibleContext.JINJA_FILTER
+
+            # Test context: cursor after "is" keyword
+            if node_type == "test":
+                return AnsibleContext.JINJA_TEST
+            if node_type == "test_name":
+                return AnsibleContext.JINJA_TEST
+
+            # Variable/identifier context
+            if node_type == "identifier" or node_type == "variable":
+                # Check if parent is a filter or test
+                parent = current.parent
+                if parent and parent.type in ("filter", "test"):
+                    continue  # Let parent iteration handle it
+                return AnsibleContext.JINJA_VARIABLE
+
+            current = current.parent
+
         return AnsibleContext.JINJA_EXPRESSION
+
+    def _get_jinja_context_regex(
+        self, injection: InjectedRegion, line: int, column: int
+    ) -> AnsibleContext:
+        """Fallback regex-based Jinja2 context detection."""
+        text = injection.text
+        # Find cursor offset within injection
+        lines = text.split('\n')
+        rel_line = line - injection.start_point[0]
+        if rel_line == 0:
+            offset = column - injection.start_point[1]
+        else:
+            offset = sum(len(l) + 1 for l in lines[:rel_line]) + column
+
+        # Get text before cursor
+        before = text[:offset] if offset <= len(text) else text
+
+        # Check for filter context: "| " before cursor
+        if re.search(r'\|\s*\w*$', before):
+            return AnsibleContext.JINJA_FILTER
+
+        # Check for test context: "is " before cursor
+        if re.search(r'\bis\s+\w*$', before):
+            return AnsibleContext.JINJA_TEST
+
+        # Default to variable context
+        return AnsibleContext.JINJA_VARIABLE
+
+    def _get_node_at_point(self, root: "Node", line: int, column: int) -> Optional["Node"]:
+        """Get deepest node at a point within a tree."""
+        point = (line, column)
+
+        def walk(node):
+            if node.start_point <= point <= node.end_point:
+                for child in node.children:
+                    result = walk(child)
+                    if result:
+                        return result
+                return node
+            return None
+
+        return walk(root)
 
     def _analyze_yaml_context(self, path: list["Node"]) -> AnsibleContext:
         """Analyze YAML node path to determine Ansible context."""

@@ -1,0 +1,49 @@
+"""Jinja2 filters and tests - auto-generated from Ansible source.
+
+DO NOT EDIT. Regenerate with: python tools/extract_schema.py
+"""
+
+from dataclasses import dataclass
+from typing import Optional
+
+
+@dataclass(frozen=True, slots=True)
+class JinjaFilter:
+    """A Jinja2 filter available in Ansible templates."""
+    fqcn: str
+    short_name: str
+    source: str
+    aliases: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class JinjaTest:
+    """A Jinja2 test available in Ansible templates."""
+    fqcn: str
+    short_name: str
+    source: str
+    aliases: tuple[str, ...] = ()
+
+
+FILTERS: dict[str, JinjaFilter] = {
+{%- for fqcn, info in jinja_filters | dictsort %}
+    {{ info.short_name | repr }}: JinjaFilter({{ fqcn | repr }}, {{ info.short_name | repr }}, {{ info.type | default("unknown") | repr }}, {{ info.aliases | default([]) | tuple | repr }}),
+{%- endfor %}
+}
+
+TESTS: dict[str, JinjaTest] = {
+{%- for fqcn, info in jinja_tests | dictsort %}
+    {{ info.short_name | repr }}: JinjaTest({{ fqcn | repr }}, {{ info.short_name | repr }}, {{ info.type | default("unknown") | repr }}, {{ info.aliases | default([]) | tuple | repr }}),
+{%- endfor %}
+}
+
+FILTER_NAMES: frozenset[str] = frozenset(FILTERS.keys())
+TEST_NAMES: frozenset[str] = frozenset(TESTS.keys())
+
+
+def is_valid_filter(name: str) -> bool:
+    return name in FILTER_NAMES
+
+
+def is_valid_test(name: str) -> bool:
+    return name in TEST_NAMES
