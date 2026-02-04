@@ -237,7 +237,7 @@ Sample Ansible filters (78 in 2.20.1):
 - =default=, =ternary= - Conditional values
 - =hash=, =password_hash= - Cryptographic hashing
 
-Jinja2 builtins (54 additional): (these should already show up in the imported grammar)
+Jinja2 builtins (54 additional): 
 - =upper=, =lower=, =capitalize=, =title= - String case
 - =replace=, =trim=, =truncate= - String manipulation
 - =join=, =first=, =last=, =length= - Sequence operations
@@ -446,7 +446,6 @@ Sample lookups (25 in 2.20.1):
 - =sequence=, =random_choice=, =cartesian= - Generation
 
 #+begin_src python :tangle tools/extract_keywords.py :mkdirp t
-
 def extract_lookups() -> dict[str, dict[str, Any]]:
     """Extract lookup plugins with their option metadata."""
     lookups: dict[str, dict[str, Any]] = {}
