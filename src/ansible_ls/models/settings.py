@@ -45,10 +45,6 @@ class AnsibleSettings:
     # Feature toggles
     use_fully_qualified_collection_names: bool = True
 
-    # Nested settings
-    execution_environment: ExecutionEnvironmentSettings = field(
-        default_factory=ExecutionEnvironmentSettings
-    )
     completion: CompletionSettings = field(default_factory=CompletionSettings)
     validation: ValidationSettings = field(default_factory=ValidationSettings)
 
@@ -67,15 +63,6 @@ class AnsibleSettings:
             ansible_path=data.get("ansiblePath", "ansible"),
             use_fully_qualified_collection_names=data.get(
                 "useFullyQualifiedCollectionNames", True
-            ),
-            execution_environment=ExecutionEnvironmentSettings(
-                enabled=ee_data.get("enabled", False),
-                container_engine=ee_data.get("containerEngine", "auto"),
-                image=ee_data.get("image", ""),
-                pull_policy=ee_data.get("pull", {}).get("policy", "missing"),
-                pull_arguments=ee_data.get("pull", {}).get("arguments", ""),
-                container_options=ee_data.get("containerOptions", ""),
-                volume_mounts=ee_data.get("volumeMounts", []),
             ),
             completion=CompletionSettings(
                 provide_redirect_modules=completion_data.get(

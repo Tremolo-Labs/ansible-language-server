@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 from textwrap import dedent
 from typing import Any
+import logging
 
 def extract_keywords() -> dict[str, list[str]]:
     """Extract keywords from Ansible playbook classes via fattributes."""
@@ -68,7 +69,8 @@ def extract_keyword_metadata() -> dict[str, dict[str, Any]]:
                 }
 
     except ImportError:
-        logging.get_logger
+        logger = logging.getLogger(__name__)
+        logger.debug("meow")
 
     return metadata
 
@@ -118,21 +120,6 @@ def extract_jinja_filters() -> dict[str, dict[str, Any]]:
     except ImportError:
         used_fallback = True
 
-    # Static fallback if neither Ansible nor Jinja2 available
-    if used_fallback and not filters:
-        try:
-            from ansible_ls.utils.jinja_fallbacks import JINJA_FILTERS
-
-            for name, info in JINJA_FILTERS.items():
-                filters[f"fallback.{name}"] = {
-                    "short_name": info.name,
-                    "aliases": [],
-                    "type": f"{info.source}_fallback",
-                    "description": info.description,
-                }
-        except ImportError:
-            print("Warning: Static filter fallback not available", file=sys.stderr)
-
     return filters
 
 def extract_jinja_tests() -> dict[str, dict[str, Any]]:
@@ -179,70 +166,38 @@ def extract_jinja_tests() -> dict[str, dict[str, Any]]:
     except ImportError:
         used_fallback = True
 
-    # Static fallback if neither Ansible nor Jinja2 available
-    if used_fallback and not tests:
-        try:
-            from ansible_ls.utils.jinja_fallbacks import JINJA_TESTS
-
-            for name, info in JINJA_TESTS.items():
-                tests[f"fallback.{name}"] = {
-                    "short_name": info.name,
-                    "aliases": [],
-                    "type": f"{info.source}_fallback",
-                    "description": info.description,
-                }
-        except ImportError:
-            print("Warning: Static test fallback not available", file=sys.stderr)
-
     return tests
 
 def extract_lookups() -> dict[str, dict[str, Any]]:
     """Extract lookup plugins with their option metadata."""
     lookups: dict[str, dict[str, Any]] = {}
 
-    try:
-        from ansible.plugins.loader import lookup_loader
 
-        for wrapper in lookup_loader.all():
-            name = wrapper.ansible_name
-            short_name = name.split(".")[-1] if "." in name else name
+    from ansible.plugins.loader import lookup_loader
 
-            # Extract option definitions
-            options = {}
-            opt_defs = getattr(wrapper, "option_definitions", None)
-            if opt_defs:
-                for opt_name, opt_meta in opt_defs.items():
-                    options[opt_name] = {
-                        "description": opt_meta.get("description", ""),
-                        "type": opt_meta.get("type", "string"),
-                        "required": opt_meta.get("required", False),
-                        "default": _serialize_default(opt_meta.get("default")),
-                        "choices": opt_meta.get("choices"),
-                    }
+    for wrapper in lookup_loader.all():
+        name = wrapper.ansible_name
+        short_name = name.split(".")[-1] if "." in name else name
 
-            lookups[name] = {
-                "short_name": short_name,
-                "aliases": list(wrapper.ansible_aliases) if wrapper.ansible_aliases else [],
-                "options": options,
-                "lazy_eval": getattr(wrapper, "accept_lazy_markers", False),
-            }
-
-    except ImportError as e:
-        print(f"Warning: Could not import lookup_loader: {e}", file=sys.stderr)
-
-        # Static fallback for lookup names
-        try:
-            from ansible_ls.utils.jinja_fallbacks import LOOKUP_NAMES
-
-            for name in LOOKUP_NAMES:
-                lookups[f"ansible.builtin.{name}"] = {
-                    "short_name": name,
-                    "aliases": [],
-                    "options": {},
-                    "lazy_eval": False,
+        # Extract option definitions
+        options = {}
+        opt_defs = getattr(wrapper, "option_definitions", None)
+        if opt_defs:
+            for opt_name, opt_meta in opt_defs.items():
+                options[opt_name] = {
+                    "description": opt_meta.get("description", ""),
+                    "type": opt_meta.get("type", "string"),
+                    "required": opt_meta.get("required", False),
+                    "default": _serialize_default(opt_meta.get("default")),
+                    "choices": opt_meta.get("choices"),
                 }
-        except ImportError:
-            print("Warning: Static lookup fallback not available", file=sys.stderr)
+
+        lookups[name] = {
+            "short_name": short_name,
+            "aliases": list(wrapper.ansible_aliases) if wrapper.ansible_aliases else [],
+            "options": options,
+            "lazy_eval": getattr(wrapper, "accept_lazy_markers", False),
+        }
 
     return lookups
 

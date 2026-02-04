@@ -6,7 +6,7 @@ Port of src/services/settingsManager.ts
 from typing import Optional
 from urllib.parse import urlparse
 
-from pygls.server import LanguageServer
+from pygls.lsp.server import LanguageServer
 
 from ..models.settings import AnsibleSettings
 

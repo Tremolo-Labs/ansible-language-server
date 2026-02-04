@@ -6,7 +6,7 @@ Port of src/services/workspaceManager.ts
 from typing import Optional, Protocol
 from urllib.parse import urlparse
 
-from pygls.server import LanguageServer
+from pygls.lsp.server import LanguageServer
 from lsprotocol import types
 
 from .settings_manager import SettingsManager
@@ -31,7 +31,6 @@ class WorkspaceFolderContext:
         # Lazy-loaded services (initialized on first access)
         self._docs_library: Optional["DocsLibrary"] = None
         self._ansible_config: Optional["AnsibleConfig"] = None
-        self._execution_env: Optional["ExecutionEnvironment"] = None
         self._ansible_lint: Optional["AnsibleLint"] = None
 
     @property

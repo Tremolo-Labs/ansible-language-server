@@ -27,6 +27,9 @@ dependencies = [
     "attrs>=23.0.0",
     "tree-sitter>=0.23.0",
     "lsprotocol>=2025.0.0",
+    "ansible-runner>=2.4.0",
+    "tree-sitter-yaml>=0.7.2",
+    "tree-sitter-jinja>=0.3.3",
 ]
 
 [project.optional-dependencies]
@@ -36,12 +39,6 @@ dev = [
     "ruff>=0.3.0",
     "mypy>=1.8.0",
     "thefuzz>=0.22.0",
-]
-container = [
-    "podman>=5.0.0",
-]
-ansible = [
-    "ansible-runner>=2.4.0",
 ]
 
 [project.scripts]
@@ -59,12 +56,6 @@ line-length = 88
 
 [tool.mypy]
 strict = true
-#+end_src
-
-*** Python Version
-
-#+begin_src text :tangle .python-version
-3.14
 #+end_src
 
 ** Implementation
@@ -97,7 +88,7 @@ The server follows the standard Language Server Protocol architecture, built on 
 #+begin_src python :tangle src/ansible_ls/server.py :mkdirp t
 """Ansible Language Server entry point."""
 
-from pygls.server import LanguageServer
+from pygls.lsp.server import LanguageServer
 
 server = LanguageServer("ansible-language-server", "v0.1.0")
 
@@ -113,7 +104,7 @@ if __name__ == "__main__":
 
 
 *** TODO Data Models
-:PROPERTIES:
+PROPERTIES:
 :ID:       data-models
 :END:
 
@@ -149,6 +140,7 @@ import sys
 from pathlib import Path
 from textwrap import dedent
 from typing import Any
+import logging
 
 #+end_src
 ***** Ansible Keywords
@@ -214,7 +206,8 @@ def extract_keyword_metadata() -> dict[str, dict[str, Any]]:
                 }
 
     except ImportError:
-        logging.get_logger
+        logger = logging.getLogger(__name__)
+        logger.debug("meow")
 
     return metadata
 
@@ -300,21 +293,6 @@ def extract_jinja_filters() -> dict[str, dict[str, Any]]:
     except ImportError:
         used_fallback = True
 
-    # Static fallback if neither Ansible nor Jinja2 available
-    if used_fallback and not filters:
-        try:
-            from ansible_ls.utils.jinja_fallbacks import JINJA_FILTERS
-
-            for name, info in JINJA_FILTERS.items():
-                filters[f"fallback.{name}"] = {
-                    "short_name": info.name,
-                    "aliases": [],
-                    "type": f"{info.source}_fallback",
-                    "description": info.description,
-                }
-        except ImportError:
-            print("Warning: Static filter fallback not available", file=sys.stderr)
-
     return filters
 
 #+end_src
@@ -395,21 +373,6 @@ def extract_jinja_tests() -> dict[str, dict[str, Any]]:
     except ImportError:
         used_fallback = True
 
-    # Static fallback if neither Ansible nor Jinja2 available
-    if used_fallback and not tests:
-        try:
-            from ansible_ls.utils.jinja_fallbacks import JINJA_TESTS
-
-            for name, info in JINJA_TESTS.items():
-                tests[f"fallback.{name}"] = {
-                    "short_name": info.name,
-                    "aliases": [],
-                    "type": f"{info.source}_fallback",
-                    "description": info.description,
-                }
-        except ImportError:
-            print("Warning: Static test fallback not available", file=sys.stderr)
-
     return tests
 
 #+end_src
@@ -449,49 +412,32 @@ def extract_lookups() -> dict[str, dict[str, Any]]:
     """Extract lookup plugins with their option metadata."""
     lookups: dict[str, dict[str, Any]] = {}
 
-    try:
-        from ansible.plugins.loader import lookup_loader
 
-        for wrapper in lookup_loader.all():
-            name = wrapper.ansible_name
-            short_name = name.split(".")[-1] if "." in name else name
+    from ansible.plugins.loader import lookup_loader
 
-            # Extract option definitions
-            options = {}
-            opt_defs = getattr(wrapper, "option_definitions", None)
-            if opt_defs:
-                for opt_name, opt_meta in opt_defs.items():
-                    options[opt_name] = {
-                        "description": opt_meta.get("description", ""),
-                        "type": opt_meta.get("type", "string"),
-                        "required": opt_meta.get("required", False),
-                        "default": _serialize_default(opt_meta.get("default")),
-                        "choices": opt_meta.get("choices"),
-                    }
+    for wrapper in lookup_loader.all():
+        name = wrapper.ansible_name
+        short_name = name.split(".")[-1] if "." in name else name
 
-            lookups[name] = {
-                "short_name": short_name,
-                "aliases": list(wrapper.ansible_aliases) if wrapper.ansible_aliases else [],
-                "options": options,
-                "lazy_eval": getattr(wrapper, "accept_lazy_markers", False),
-            }
-
-    except ImportError as e:
-        print(f"Warning: Could not import lookup_loader: {e}", file=sys.stderr)
-
-        # Static fallback for lookup names
-        try:
-            from ansible_ls.utils.jinja_fallbacks import LOOKUP_NAMES
-
-            for name in LOOKUP_NAMES:
-                lookups[f"ansible.builtin.{name}"] = {
-                    "short_name": name,
-                    "aliases": [],
-                    "options": {},
-                    "lazy_eval": False,
+        # Extract option definitions
+        options = {}
+        opt_defs = getattr(wrapper, "option_definitions", None)
+        if opt_defs:
+            for opt_name, opt_meta in opt_defs.items():
+                options[opt_name] = {
+                    "description": opt_meta.get("description", ""),
+                    "type": opt_meta.get("type", "string"),
+                    "required": opt_meta.get("required", False),
+                    "default": _serialize_default(opt_meta.get("default")),
+                    "choices": opt_meta.get("choices"),
                 }
-        except ImportError:
-            print("Warning: Static lookup fallback not available", file=sys.stderr)
+
+        lookups[name] = {
+            "short_name": short_name,
+            "aliases": list(wrapper.ansible_aliases) if wrapper.ansible_aliases else [],
+            "options": options,
+            "lazy_eval": getattr(wrapper, "accept_lazy_markers", False),
+        }
 
     return lookups
 
@@ -1529,10 +1475,6 @@ class AnsibleSettings:
     # Feature toggles
     use_fully_qualified_collection_names: bool = True
 
-    # Nested settings
-    execution_environment: ExecutionEnvironmentSettings = field(
-        default_factory=ExecutionEnvironmentSettings
-    )
     completion: CompletionSettings = field(default_factory=CompletionSettings)
     validation: ValidationSettings = field(default_factory=ValidationSettings)
 
@@ -1551,15 +1493,6 @@ class AnsibleSettings:
             ansible_path=data.get("ansiblePath", "ansible"),
             use_fully_qualified_collection_names=data.get(
                 "useFullyQualifiedCollectionNames", True
-            ),
-            execution_environment=ExecutionEnvironmentSettings(
-                enabled=ee_data.get("enabled", False),
-                container_engine=ee_data.get("containerEngine", "auto"),
-                image=ee_data.get("image", ""),
-                pull_policy=ee_data.get("pull", {}).get("policy", "missing"),
-                pull_arguments=ee_data.get("pull", {}).get("arguments", ""),
-                container_options=ee_data.get("containerOptions", ""),
-                volume_mounts=ee_data.get("volumeMounts", []),
             ),
             completion=CompletionSettings(
                 provide_redirect_modules=completion_data.get(
@@ -1587,21 +1520,6 @@ class AnsibleSettings:
 
 Services provide business logic to providers. They initialize lazily per workspace folder:
 
-#+begin_src
-Connection (pygls LanguageServer)
-    │
-    ├──→ SettingsManager (eager)
-    │        └─ Manages workspace/document settings
-    │
-    └──→ WorkspaceManager (eager)
-             │
-             └──→ WorkspaceFolderContext (per workspace folder)
-                      ├──→ DocumentSettings (lazy, per-document)
-                      ├──→ DocsLibrary (lazy, async)
-                      ├──→ ValidationManager (lazy)
-                      └──→ ExecutionEnvironment (lazy, async)
-#+end_src
-
 Most services are lazy-loaded because not all workspaces need all services, expensive initialization should be deferred, and services may fail gracefully if dependencies are unavailable.
 
 **** Settings Service
@@ -1623,7 +1541,7 @@ Port of src/services/settingsManager.ts
 from typing import Optional
 from urllib.parse import urlparse
 
-from pygls.server import LanguageServer
+from pygls.lsp.server import LanguageServer
 
 from ..models.settings import AnsibleSettings
 
@@ -1712,7 +1630,7 @@ Port of src/services/workspaceManager.ts
 from typing import Optional, Protocol
 from urllib.parse import urlparse
 
-from pygls.server import LanguageServer
+from pygls.lsp.server import LanguageServer
 from lsprotocol import types
 
 from .settings_manager import SettingsManager
@@ -1737,7 +1655,6 @@ class WorkspaceFolderContext:
         # Lazy-loaded services (initialized on first access)
         self._docs_library: Optional["DocsLibrary"] = None
         self._ansible_config: Optional["AnsibleConfig"] = None
-        self._execution_env: Optional["ExecutionEnvironment"] = None
         self._ansible_lint: Optional["AnsibleLint"] = None
 
     @property
@@ -2225,6 +2142,7 @@ async def run_ansible_lint(
 :ID:       yaml-parsing
 :END:
 The parsing service parses the syntax tree of provided code documents and stores the locations of various nodes. You can query it to build lists of relationships between nodes of interest. It knows about the primitive language syntax, but it also knows about Ansible datatypes.
+
 ***** Why tree-sitter
 :PROPERTIES:
 :ID:       5a3be352-f776-4bc1-b080-e6c0651cfffd
@@ -2241,7 +2159,7 @@ For a language server that re-parses on every keystroke, we need:
 https://tree-sitter.github.io/tree-sitter/using-parsers/3-advanced-parsing.html#multi-language-documents
 
 
-#+begin_src python :tangle src/ansible_ls/ansible_parser/__init__.py :mkdirp t
+#+begin_src python :tangle src/ansible_ls/services/ansible_parser/__init__.py :mkdirp t
 """Ansible parser package - tree-sitter based parsing for Ansible documents."""
 
 from .parser_service import ParserService
@@ -2250,7 +2168,7 @@ from .ansible_document import AnsibleDocument, AnsibleContext
 __all__ = ["ParserService", "AnsibleDocument", "AnsibleContext"]
 #+end_src
 
-#+begin_src python :tangle src/ansible_ls/ansible_parser/ansible_document.py :mkdirp t
+#+begin_src python :tangle src/ansible_ls/services/ansible_parser/ansible_document.py :mkdirp t
 """Ansible document representation with parsed AST.
 
 An AnsibleDocument holds the parsed tree-sitter AST along with
@@ -2527,7 +2445,7 @@ class AnsibleDocument:
         return key not in task_keywords
 #+end_src
 
-#+begin_src python :tangle src/ansible_ls/ansible_parser/parser_service.py :mkdirp t
+#+begin_src python :tangle src/ansible_ls/services/ansible_parser/parser_service.py :mkdirp t
 """Parser service - the main interface for providers to parse and query documents.
 
 This service manages tree-sitter parsers and provides a clean API for
@@ -2783,7 +2701,7 @@ class ParserService:
         return (line, col)
 #+end_src
 
-#+begin_src python :tangle src/ansible_ls/ansible_parser/queries.py :mkdirp t
+#+begin_src python :tangle src/ansible_ls/services/ansible_parser/queries.py :mkdirp t
 """Tree-sitter queries for Ansible-specific patterns.
 
 All queries are generated from ansible_schema TypeSchema objects.
@@ -3076,6 +2994,67 @@ I don't need to modify the grammar.
         return text
 #+end_src
 
+***** TODO Parser Tests
+:PROPERTIES:
+:ID:       f5b02b10-e604-4dd4-b6d9-da676ea3fc88
+:END:
+
+- Note taken on [2026-02-02 Mon 04:09] \\
+  these need to be expanded and ported to integration test the whole Ansible grammar. find the declaration of a var from inside jinja2.
+#+begin_src python :tangle tests/services/ansible_parser/test_ansible_parser.py :mkdirp t
+"""Tests for ANSIBLE parser service
+"""
+
+import pytest
+from pathlib import Path
+
+from ansible_ls.services.ansible_parser import ParserService
+
+
+ANSIBLE_FIXTURES = Path(__file__).parent.parent / "fixtures" / "ansible"
+
+
+def get_path_in_file(ansible_file: str, line: int, character: int) -> list:
+    """Get AST path at position in a fixture file."""
+    filepath = ANSIBLE_FIXTURES / ansible_file
+    content = filepath.read_text()
+    tree = ParserService.parse(filepath, content)
+    # Convert 1-indexed to 0-indexed
+    return tree.get_path_to_position(tree, line - 1, character - 1)
+
+
+class TestAnsibleParsing:
+    """Test basic ANSIBLE parsing functions."""
+
+    def test_parse_simple_ansible(self):
+        """Test parsing simple ANSIBLE content."""
+        content = "key: value"
+        tree = ParserService.parse("", content)
+        assert tree is not None
+        assert tree.root_node.type == "stream"
+
+    def test_parse_playbook(self):
+        """Test parsing Ansible playbook structure."""
+        content = """---
+- name: Test play
+  hosts: all
+  tasks:
+    - name: Test task
+      debug:
+        msg: "hello"
+"""
+        tree = ParserService.parse(content)
+        assert tree is not None
+
+    def test_get_node_at_position(self):
+        """Test finding node at cursor position."""
+        content = "key: value"
+        tree = ParserService.parse("", content)
+        node = tree.get_node_at_position(tree, 0, 0)
+        assert node is not None
+        # Should be at 'key'
+        assert "key" in node.text.decode()
+#+end_src
 
 *** External Tool Integration
 :PROPERTIES:
@@ -3272,10 +3251,6 @@ def smart_filter(completion_list: list, trigger_character: Optional[str] = None)
 """Ansible Language Server test suite."""
 #+end_src
 
-#+begin_src python :tangle tests/utils/__init__.py :mkdirp t
-"""Utility function tests."""
-#+end_src
-
 #+begin_src python :tangle tests/providers/__init__.py :mkdirp t
 """Provider tests."""
 #+end_src
@@ -3284,75 +3259,8 @@ def smart_filter(completion_list: list, trigger_character: Optional[str] = None)
 """Service tests."""
 #+end_src
 
-**** TODO Ansible TreeSitter Tests
-:PROPERTIES:
-:ID:       f5b02b10-e604-4dd4-b6d9-da676ea3fc88
-:END:
-
-- Note taken on [2026-02-02 Mon 04:09] \\
-  these need to be expanded and ported to integration test the whole Ansible grammar. find the declaration of a var from inside jinja2.
-#+begin_src python :tangle tests/utils/test_yaml_utils.py :mkdirp t
-"""Tests for YAML utilities.
-
-Port of test/utils/yaml.test.ts
-"""
-
-import pytest
-from pathlib import Path
-
-from ansible_ls.utils.yaml_utils import (
-    parse_yaml,
-    get_node_at_position,
-    get_path_to_position,
-)
 
 
-YAML_FIXTURES = Path(__file__).parent.parent / "fixtures" / "yaml"
-
-
-def get_path_in_file(yaml_file: str, line: int, character: int) -> list:
-    """Get AST path at position in a fixture file."""
-    filepath = YAML_FIXTURES / yaml_file
-    content = filepath.read_text()
-    tree = parse_yaml(content)
-    # Convert 1-indexed to 0-indexed
-    return get_path_to_position(tree, line - 1, character - 1)
-
-
-class TestYamlParsing:
-    """Test basic YAML parsing functions."""
-
-    def test_parse_simple_yaml(self):
-        """Test parsing simple YAML content."""
-        content = "key: value"
-        tree = parse_yaml(content)
-        assert tree is not None
-        assert tree.root_node.type == "stream"
-
-    def test_parse_playbook(self):
-        """Test parsing Ansible playbook structure."""
-        content = """---
-- name: Test play
-  hosts: all
-  tasks:
-    - name: Test task
-      debug:
-        msg: "hello"
-"""
-        tree = parse_yaml(content)
-        assert tree is not None
-
-    def test_get_node_at_position(self):
-        """Test finding node at cursor position."""
-        content = "key: value"
-        tree = parse_yaml(content)
-        node = get_node_at_position(tree, 0, 0)
-        assert node is not None
-        # Should be at 'key'
-        assert "key" in node.text.decode()
-#+end_src
-
-nnn
 ** Appendix
 :PROPERTIES:
 :VISIBILITY: folded
@@ -3369,13 +3277,7 @@ nnn
 __version__ = "0.1.0"
 #+end_src
 
-#+begin_src python :tangle src/ansible_ls/utils/__init__.py :mkdirp t
-"""Utility functions."""
 
-from .parse_ansible import get_node_at_position, parse_ansible
-
-__all__ = ["get_node_at_position", "parse_ansible"]
-#+end_src
 ** TODO multiple yaml grammars
   [2026-02-03 Tue]
   [[id:5a3be352-f776-4bc1-b080-e6c0651cfffd][Why tree-sitter]]

@@ -1,6 +1,6 @@
 """Ansible Language Server entry point."""
 
-from pygls.server import LanguageServer
+from pygls.lsp.server import LanguageServer
 
 server = LanguageServer("ansible-language-server", "v0.1.0")
 
