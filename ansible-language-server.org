@@ -112,608 +112,7 @@ if __name__ == "__main__":
 #+end_src
 
 
-*** Parsing
-:PROPERTIES:
-:ID:       yaml-parsing
-:END:
-**** Why tree-sitter
-:PROPERTIES:
-:ID:       5a3be352-f776-4bc1-b080-e6c0651cfffd
-:END:
-For a language server that re-parses on every keystroke, we need:
-- *Incremental parsing* - Only reparse changed regions
-- *Error recovery* - Keep working with invalid markup
-- *Position tracking* - Map cursor to AST nodes
-- *Grammar Composition* - Ansible is actually jinja2 and yaml, python, a little ini, a custom set of keywords...
-  
-*TypeScript:* [[file:src/utils/yaml.ts][src/utils/yaml.ts]] (663 lines) uses the npm =yaml= package with custom AST traversal.
-
-*Python:* We use =tree-sitter= which provides all requirements. 
-https://tree-sitter.github.io/tree-sitter/using-parsers/3-advanced-parsing.html#multi-language-documents
-
-
-#+begin_src python :tangle src/ansible_ls/ansible_parser/__init__.py :mkdirp t
-"""Ansible parser package - tree-sitter based parsing for Ansible documents."""
-
-from .parser_service import ParserService
-from .ansible_document import AnsibleDocument, AnsibleContext
-
-__all__ = ["ParserService", "AnsibleDocument", "AnsibleContext"]
-#+end_src
-
-#+begin_src python :tangle src/ansible_ls/ansible_parser/ansible_document.py :mkdirp t
-"""Ansible document representation with parsed AST.
-
-An AnsibleDocument holds the parsed tree-sitter AST along with
-extracted semantic information about the Ansible content.
-"""
-
-from dataclasses import dataclass, field
-from enum import Enum, auto
-from typing import Optional, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from tree_sitter import Node, Tree
-
-
-class AnsibleContext(Enum):
-    """Context within an Ansible document where the cursor can be."""
-    UNKNOWN = auto()
-    PLAY = auto()
-    TASK = auto()
-    BLOCK = auto()
-    ROLE = auto()
-    HANDLER = auto()
-    MODULE_NAME = auto()
-    MODULE_OPTIONS = auto()
-    JINJA_EXPRESSION = auto()
-    JINJA_FILTER = auto()
-    JINJA_TEST = auto()
-    JINJA_VARIABLE = auto()
-
-
-@dataclass
-class InjectedRegion:
-    """A region where a different language is injected (e.g., Jinja2 in YAML)."""
-    start_byte: int
-    end_byte: int
-    start_point: tuple[int, int]
-    end_point: tuple[int, int]
-    language: str
-    tree: Optional["Tree"] = None
-    original_text: str = ""
-
-
-@dataclass
-class AnsibleDocument:
-    """Parsed Ansible document with YAML AST and injected Jinja2 regions.
-
-    This is the primary interface for providers to query document structure.
-    """
-    uri: str
-    content: str
-    yaml_tree: "Tree"
-    injections: list[InjectedRegion] = field(default_factory=list)
-    version: int = 0
-
-    def get_node_at_position(self, line: int, column: int) -> Optional["Node"]:
-        """Get the deepest YAML node at the given position.
-
-        Args:
-            line: 0-indexed line number
-            column: 0-indexed column number
-
-        Returns:
-            The deepest node containing the position, or None
-        """
-        root = self.yaml_tree.root_node
-        point = (line, column)
-
-        def walk(node: "Node") -> Optional["Node"]:
-            if node.start_point <= point <= node.end_point:
-                for child in node.children:
-                    result = walk(child)
-                    if result:
-                        return result
-                return node
-            return None
-
-        return walk(root)
-
-    def get_path_to_position(self, line: int, column: int) -> list["Node"]:
-        """Get the path from root to the node at position.
-
-        Returns list of nodes from root to the deepest node.
-        """
-        root = self.yaml_tree.root_node
-        point = (line, column)
-        path: list["Node"] = []
-
-        def walk(node: "Node") -> bool:
-            if node.start_point <= point <= node.end_point:
-                path.append(node)
-                for child in node.children:
-                    if walk(child):
-                        return True
-                return True
-            return False
-
-        walk(root)
-        return path
-
-    def get_injection_at_position(self, line: int, column: int) -> Optional[InjectedRegion]:
-        """Check if position is within an injected region (e.g., Jinja2)."""
-        point = (line, column)
-        for injection in self.injections:
-            if injection.start_point <= point <= injection.end_point:
-                return injection
-        return None
-
-    def get_context_at_position(self, line: int, column: int) -> AnsibleContext:
-        """Determine the Ansible context at a given position.
-
-        This is the key method for providers - it tells them what kind
-        of completions/hovers/definitions are appropriate.
-        """
-        # Check if we're in a Jinja2 injection first
-        injection = self.get_injection_at_position(line, column)
-        if injection:
-            return self._get_jinja_context(injection, line, column)
-
-        # Otherwise analyze the YAML structure
-        path = self.get_path_to_position(line, column)
-        return self._analyze_yaml_context(path)
-
-    def _get_jinja_context(
-        self, injection: InjectedRegion, line: int, column: int
-    ) -> AnsibleContext:
-        """Determine context within a Jinja2 expression."""
-        if injection.tree is None:
-            return AnsibleContext.JINJA_EXPRESSION
-
-        # TODO: Query the Jinja2 tree to determine if we're in:
-        # - A variable reference: {{ var }}
-        # - A filter: {{ var | filter }}
-        # - A test: {% if var is test %}
-        return AnsibleContext.JINJA_EXPRESSION
-
-    def _analyze_yaml_context(self, path: list["Node"]) -> AnsibleContext:
-        """Analyze YAML node path to determine Ansible context."""
-        if not path:
-            return AnsibleContext.UNKNOWN
-
-        # Walk up the path looking for structural markers
-        for i, node in enumerate(reversed(path)):
-            node_type = node.type
-
-            # Check for block_mapping_pair which contains key: value
-            if node_type == "block_mapping_pair":
-                key_node = node.child_by_field_name("key")
-                if key_node:
-                    key_text = self._get_node_text(key_node)
-
-                    # Task-level keywords
-                    if key_text == "tasks" or key_text == "pre_tasks" or key_text == "post_tasks":
-                        return AnsibleContext.TASK
-                    if key_text == "handlers":
-                        return AnsibleContext.HANDLER
-                    if key_text == "block":
-                        return AnsibleContext.BLOCK
-                    if key_text == "roles":
-                        return AnsibleContext.ROLE
-                    if key_text == "hosts":
-                        return AnsibleContext.PLAY
-
-                    # Check if this looks like a module invocation
-                    # (key that's not a known keyword, with dict/value after)
-                    if self._is_likely_module_name(key_text):
-                        value_node = node.child_by_field_name("value")
-                        if value_node:
-                            # Cursor is in the value = module options
-                            return AnsibleContext.MODULE_OPTIONS
-                        return AnsibleContext.MODULE_NAME
-
-        return AnsibleContext.UNKNOWN
-
-    def _get_node_text(self, node: "Node") -> str:
-        """Extract text content from a node."""
-        return self.content[node.start_byte:node.end_byte]
-
-    def _is_likely_module_name(self, key: str) -> bool:
-        """Check if a key looks like a module name vs a keyword."""
-        # Known task keywords that aren't modules
-        task_keywords = {
-            "name", "when", "register", "vars", "loop", "with_items",
-            "with_dict", "with_file", "notify", "tags", "become",
-            "become_user", "delegate_to", "ignore_errors", "changed_when",
-            "failed_when", "until", "retries", "delay", "no_log",
-            "environment", "args", "async", "poll", "throttle",
-        }
-        return key not in task_keywords
-#+end_src
-
-#+begin_src python :tangle src/ansible_ls/ansible_parser/parser_service.py :mkdirp t
-"""Parser service - the main interface for providers to parse and query documents.
-
-This service manages tree-sitter parsers and provides a clean API for
-the rest of the language server to work with Ansible documents.
-"""
-
-import logging
-import re
-from typing import Optional
-
-import tree_sitter_yaml
-from tree_sitter import Language, Parser, Tree
-
-from .ansible_document import AnsibleDocument, InjectedRegion
-
-logger = logging.getLogger(__name__)
-
-# Jinja2 pattern matching for injection detection
-JINJA_EXPRESSION_PATTERN = re.compile(r"\{\{.*?\}\}", re.DOTALL)
-JINJA_STATEMENT_PATTERN = re.compile(r"\{%.*?%\}", re.DOTALL)
-JINJA_COMMENT_PATTERN = re.compile(r"\{#.*?#\}", re.DOTALL)
-
-
-class ParserService:
-    """Service for parsing Ansible documents with tree-sitter.
-
-    Handles:
-    - YAML parsing with tree-sitter-yaml
-    - Jinja2 injection detection and parsing
-    - Document caching and incremental updates
-
-    Usage:
-        service = ParserService()
-        doc = service.parse(uri, content)
-        context = doc.get_context_at_position(line, col)
-    """
-
-    def __init__(self) -> None:
-        """Initialize the parser service with tree-sitter languages."""
-        # Initialize YAML parser
-        self._yaml_language = Language(tree_sitter_yaml.language())
-        self._yaml_parser = Parser(self._yaml_language)
-
-        # Initialize Jinja2 parser if available
-        self._jinja_language: Optional[Language] = None
-        self._jinja_parser: Optional[Parser] = None
-        self._init_jinja_parser()
-
-        # Document cache: uri -> AnsibleDocument
-        self._documents: dict[str, AnsibleDocument] = {}
-
-        logger.info("ParserService initialized")
-
-    def _init_jinja_parser(self) -> None:
-        """Try to initialize the Jinja2 parser."""
-        try:
-            import tree_sitter_jinja
-            self._jinja_language = Language(tree_sitter_jinja.language())
-            self._jinja_parser = Parser(self._jinja_language)
-            logger.info("Jinja2 parser initialized")
-        except ImportError:
-            logger.warning(
-                "tree_sitter_jinja not available - "
-                "Jinja2 parsing will be limited"
-            )
-
-    def parse(self, uri: str, content: str, version: int = 0) -> AnsibleDocument:
-        """Parse an Ansible document and return the parsed representation.
-
-        Args:
-            uri: Document URI for caching
-            content: The document text content
-            version: Document version for cache invalidation
-
-        Returns:
-            AnsibleDocument with parsed YAML tree and detected injections
-        """
-        # Check cache
-        if uri in self._documents:
-            cached = self._documents[uri]
-            if cached.version >= version and cached.content == content:
-                return cached
-
-        # Parse YAML
-        yaml_tree = self._yaml_parser.parse(content.encode("utf-8"))
-
-        # Detect and parse Jinja2 injections
-        injections = self._find_injections(content, yaml_tree)
-
-        # Create document
-        doc = AnsibleDocument(
-            uri=uri,
-            content=content,
-            yaml_tree=yaml_tree,
-            injections=injections,
-            version=version,
-        )
-
-        # Cache it
-        self._documents[uri] = doc
-
-        return doc
-
-    def parse_incremental(
-        self,
-        uri: str,
-        content: str,
-        version: int,
-        start_byte: int,
-        old_end_byte: int,
-        new_end_byte: int,
-        start_point: tuple[int, int],
-        old_end_point: tuple[int, int],
-        new_end_point: tuple[int, int],
-    ) -> AnsibleDocument:
-        """Incrementally update a parsed document.
-
-        Tree-sitter supports incremental parsing - we only need to
-        reparse the changed region, not the entire document.
-        """
-        if uri not in self._documents:
-            return self.parse(uri, content, version)
-
-        old_doc = self._documents[uri]
-        old_tree = old_doc.yaml_tree
-
-        # Edit the tree
-        old_tree.edit(
-            start_byte=start_byte,
-            old_end_byte=old_end_byte,
-            new_end_byte=new_end_byte,
-            start_point=start_point,
-            old_end_point=old_end_point,
-            new_end_point=new_end_point,
-        )
-
-        # Reparse with the edited tree (tree-sitter reuses unchanged parts)
-        new_tree = self._yaml_parser.parse(
-            content.encode("utf-8"),
-            old_tree,
-        )
-
-        # Re-detect injections (could be smarter about this)
-        injections = self._find_injections(content, new_tree)
-
-        doc = AnsibleDocument(
-            uri=uri,
-            content=content,
-            yaml_tree=new_tree,
-            injections=injections,
-            version=version,
-        )
-
-        self._documents[uri] = doc
-        return doc
-
-    def get_document(self, uri: str) -> Optional[AnsibleDocument]:
-        """Get a cached document by URI."""
-        return self._documents.get(uri)
-
-    def remove_document(self, uri: str) -> None:
-        """Remove a document from the cache."""
-        self._documents.pop(uri, None)
-
-    def _find_injections(self, content: str, yaml_tree: Tree) -> list[InjectedRegion]:
-        """Find Jinja2 injections in string nodes of the YAML tree.
-
-        We look for {{ }}, {% %}, and {# #} patterns within YAML string values.
-        """
-        injections: list[InjectedRegion] = []
-
-        # Query for string scalar nodes in the YAML tree
-        string_nodes = self._find_string_nodes(yaml_tree.root_node)
-
-        for node in string_nodes:
-            node_text = content[node.start_byte:node.end_byte]
-
-            # Check for Jinja patterns
-            for pattern in [
-                JINJA_EXPRESSION_PATTERN,
-                JINJA_STATEMENT_PATTERN,
-                JINJA_COMMENT_PATTERN,
-            ]:
-                for match in pattern.finditer(node_text):
-                    # Calculate absolute positions
-                    rel_start = match.start()
-                    rel_end = match.end()
-                    abs_start = node.start_byte + rel_start
-                    abs_end = node.start_byte + rel_end
-
-                    # Convert to line/column
-                    start_point = self._byte_to_point(content, abs_start)
-                    end_point = self._byte_to_point(content, abs_end)
-
-                    # Parse with Jinja2 parser if available
-                    jinja_tree = None
-                    if self._jinja_parser:
-                        jinja_text = match.group()
-                        jinja_tree = self._jinja_parser.parse(
-                            jinja_text.encode("utf-8")
-                        )
-
-                    injection = InjectedRegion(
-                        start_byte=abs_start,
-                        end_byte=abs_end,
-                        start_point=start_point,
-                        end_point=end_point,
-                        language="jinja2",
-                        tree=jinja_tree,
-                        original_text=match.group(),
-                    )
-                    injections.append(injection)
-
-        return injections
-
-    def _find_string_nodes(self, node) -> list:
-        """Recursively find all string scalar nodes in a tree."""
-        results = []
-
-        # String node types in tree-sitter-yaml
-        string_types = {
-            "string_scalar",
-            "double_quote_scalar",
-            "single_quote_scalar",
-            "block_scalar",
-            "flow_scalar",
-        }
-
-        if node.type in string_types:
-            results.append(node)
-
-        for child in node.children:
-            results.extend(self._find_string_nodes(child))
-
-        return results
-
-    def _byte_to_point(self, content: str, byte_offset: int) -> tuple[int, int]:
-        """Convert a byte offset to (line, column) tuple."""
-        line = 0
-        col = 0
-        current_byte = 0
-
-        for char in content:
-            if current_byte >= byte_offset:
-                break
-            if char == '\n':
-                line += 1
-                col = 0
-            else:
-                col += 1
-            current_byte += len(char.encode('utf-8'))
-
-        return (line, col)
-#+end_src
-
-#+begin_src python :tangle src/ansible_ls/ansible_parser/queries.py :mkdirp t
-"""Tree-sitter queries for Ansible-specific patterns.
-
-These queries help identify Ansible structures within the YAML AST:
-- Play definitions
-- Task lists
-- Module invocations
-- Variable references
-"""
-
-# Query to find play-level mappings (items in the top-level list with 'hosts' key)
-PLAY_QUERY = """
-(document
-  (block_node
-    (block_sequence
-      (block_sequence_item
-        (block_node
-          (block_mapping
-            (block_mapping_pair
-              key: (flow_node) @play_key
-              (#match? @play_key "^hosts$"))))))))
-"""
-
-# Query to find task definitions within plays
-TASK_QUERY = """
-(block_mapping_pair
-  key: (flow_node) @tasks_key
-  (#match? @tasks_key "^(tasks|pre_tasks|post_tasks|handlers)$")
-  value: (block_node
-    (block_sequence
-      (block_sequence_item) @task)))
-"""
-
-# Query to find module invocations (key-value pairs that aren't known keywords)
-MODULE_QUERY = """
-(block_mapping_pair
-  key: (flow_node) @module_name
-  value: (_) @module_args)
-"""
-
-# Query to find Jinja2 expressions in strings
-JINJA_QUERY = """
-[
-  (double_quote_scalar) @string
-  (single_quote_scalar) @string
-  (block_scalar) @string
-]
-"""
-
-
-def get_query_for_context(context_type: str) -> str:
-    """Get the appropriate query for a context type."""
-    queries = {
-        "play": PLAY_QUERY,
-        "task": TASK_QUERY,
-        "module": MODULE_QUERY,
-        "jinja": JINJA_QUERY,
-    }
-    return queries.get(context_type, "")
-#+end_src
-
-***** TODO injection queries
-:PROPERTIES:
-:ID:       26091bb5-7950-45f4-a7fe-581c20ec4936
-:END:
-the grammar actually shouldn't have a ton of stuff baked into it. Just a couple minimal data structures overlaid on YAML for ansible-specific types.
-
-might want =string_scalar= to be =double_quoted_scalar= or whatever's in the YAML grammar
-#+begin_src jinja2
-{%
-;; injections.scm - Identify where to inject Jinja2 in YAML
-((string_scalar) @injection.content 
-    (#match? @injection.content "^.*{{.*}}.*$|^.*{%.*%}.*$")
-    (#set! injection.language "jinja2"))
-%}
-#+end_src
-****** parsing and dispatching the injections in Python
-I don't need to modify the grammar.
-#+begin_src python
-    def parse_document(self, document_text: str):
-        """Parse a document, apply language injection, and return a structure."""
-        # 1. Parse the entire document with the primary language (YAML)
-        main_tree = self.yaml_parser.parse(bytes(document_text, "utf8"))
-
-        # 2. Execute the injection query to find nodes to re-parse
-        captures = self.injection_query.captures(main_tree.root_node)
-        injections = []
-
-        for node, tag in captures:
-            if tag == "injection.content":
-                # Get the text range of this node
-                start_byte, end_byte = node.start_byte, node.end_byte
-                injected_text = document_text[start_byte:end_byte]
-
-                # 3. Re-parse this text fragment with Jinja2
-                # You might need to clean up surrounding YAML quotes
-                jinja2_text = self._prepare_for_jinja_parsing(injected_text)
-                injected_tree = self.jinja2_parser.parse(
-                    bytes(jinja2_text, "utf8")
-                )
-
-                injections.append({
-                    'node': node,           # The YAML string node
-                    'tree': injected_tree,  # The new Jinja2 tree
-                    'language': 'jinja2',
-                    'byte_range': (start_byte, end_byte),
-                    'original_text': injected_text
-                })
-
-        return {
-            'main_tree': main_tree,
-            'main_language': 'yaml',
-            'injections': injections
-        }
-
-    def _prepare_for_jinja_parsing(self, text: str) -> str:
-        # Simple helper to strip surrounding YAML quotes if needed.
-        # Real implementation needs to handle single/double quotes, block scalars.
-        for quote in ("'", '"'):
-            if text.startswith(quote) and text.endswith(quote):
-                return text[1:-1]
-        return text
-#+end_src
-
-
-*** Data Models
+*** TODO Data Models
 :PROPERTIES:
 :ID:       data-models
 :END:
@@ -821,6 +220,7 @@ def extract_keyword_metadata() -> dict[str, dict[str, Any]]:
     return metadata
 
 #+end_src
+
 ***** Jinja2 Filters
 :PROPERTIES:
 :ID:       jinja-filters
@@ -1312,11 +712,6 @@ def extract_callback_plugins() -> dict[str, dict[str, Any]]:
 #+end_src
 ***** Full Extraction Script
 
-
-
-
-
-
 #+begin_src python :tangle tools/extract_keywords.py :mkdirp t
 
 def _serialize_default(value: Any) -> Any:
@@ -1334,6 +729,7 @@ def _serialize_default(value: Any) -> Any:
     return repr(value)
 
 #+end_src
+
 #+begin_src python :tangle tools/extract_keywords.py :mkdirp t
 
 def main() -> None:
@@ -1786,6 +1182,8 @@ def main():
 if __name__ == "__main__":
     main()
 #+end_src
+
+#+RESULTS:
 
 
 ***** Unit Tests for Metadata Extraction
@@ -2554,9 +1952,6 @@ class WorkspaceManager:
 :PROPERTIES:
 :ID:       docs-library
 :END:
-
-- Note taken on [2026-02-02 Mon 05:28] \\
-  if it's possible to bake this into the grammar, then move this over to the build
 The =DocsLibrary= discovers and caches Ansible module documentation from builtin modules, installed collections, and playbook-adjacent collections.
 
 *TypeScript:* [[file:src/services/docsLibrary.ts][src/services/docsLibrary.ts]] (~275 lines) caches module metadata and documentation.
@@ -2919,6 +2314,608 @@ async def run_ansible_lint(
 #+end_src
 
 
+**** Parsing Service
+:PROPERTIES:
+:ID:       yaml-parsing
+:END:
+The parsing service parses the syntax tree of provided code documents and stores the locations of various nodes. You can query it to build lists of relationships between nodes of interest. It knows about the primitive language syntax, but it also knows about Ansible datatypes.
+***** Why tree-sitter
+:PROPERTIES:
+:ID:       5a3be352-f776-4bc1-b080-e6c0651cfffd
+:END:
+For a language server that re-parses on every keystroke, we need:
+- *Incremental parsing* - Only reparse changed regions
+- *Error recovery* - Keep working with invalid markup
+- *Position tracking* - Map cursor to AST nodes
+- *Grammar Composition* - Ansible is actually jinja2 and yaml, python, a little ini, a custom set of keywords...
+  
+*TypeScript:* [[file:src/utils/yaml.ts][src/utils/yaml.ts]] (663 lines) uses the npm =yaml= package with custom AST traversal.
+
+*Python:* We use =tree-sitter= which provides all requirements. 
+https://tree-sitter.github.io/tree-sitter/using-parsers/3-advanced-parsing.html#multi-language-documents
+
+
+#+begin_src python :tangle src/ansible_ls/ansible_parser/__init__.py :mkdirp t
+"""Ansible parser package - tree-sitter based parsing for Ansible documents."""
+
+from .parser_service import ParserService
+from .ansible_document import AnsibleDocument, AnsibleContext
+
+__all__ = ["ParserService", "AnsibleDocument", "AnsibleContext"]
+#+end_src
+
+#+begin_src python :tangle src/ansible_ls/ansible_parser/ansible_document.py :mkdirp t
+"""Ansible document representation with parsed AST.
+
+An AnsibleDocument holds the parsed tree-sitter AST along with
+extracted semantic information about the Ansible content.
+"""
+
+from dataclasses import dataclass, field
+from enum import Enum, auto
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from tree_sitter import Node, Tree
+
+
+class AnsibleContext(Enum):
+    """Context within an Ansible document where the cursor can be."""
+    UNKNOWN = auto()
+    PLAY = auto()
+    TASK = auto()
+    BLOCK = auto()
+    ROLE = auto()
+    HANDLER = auto()
+    MODULE_NAME = auto()
+    MODULE_OPTIONS = auto()
+    JINJA_EXPRESSION = auto()
+    JINJA_FILTER = auto()
+    JINJA_TEST = auto()
+    JINJA_VARIABLE = auto()
+
+
+@dataclass
+class InjectedRegion:
+    """A region where a different language is injected (e.g., Jinja2 in YAML)."""
+    start_byte: int
+    end_byte: int
+    start_point: tuple[int, int]
+    end_point: tuple[int, int]
+    language: str
+    tree: Optional["Tree"] = None
+    original_text: str = ""
+
+
+@dataclass
+class AnsibleDocument:
+    """Parsed Ansible document with YAML AST and injected Jinja2 regions.
+
+    This is the primary interface for providers to query document structure.
+    """
+    uri: str
+    content: str
+    yaml_tree: "Tree"
+    injections: list[InjectedRegion] = field(default_factory=list)
+    version: int = 0
+
+    def get_node_at_position(self, line: int, column: int) -> Optional["Node"]:
+        """Get the deepest YAML node at the given position.
+
+        Args:
+            line: 0-indexed line number
+            column: 0-indexed column number
+
+        Returns:
+            The deepest node containing the position, or None
+        """
+        root = self.yaml_tree.root_node
+        point = (line, column)
+
+        def walk(node: "Node") -> Optional["Node"]:
+            if node.start_point <= point <= node.end_point:
+                for child in node.children:
+                    result = walk(child)
+                    if result:
+                        return result
+                return node
+            return None
+
+        return walk(root)
+
+    def get_path_to_position(self, line: int, column: int) -> list["Node"]:
+        """Get the path from root to the node at position.
+
+        Returns list of nodes from root to the deepest node.
+        """
+        root = self.yaml_tree.root_node
+        point = (line, column)
+        path: list["Node"] = []
+
+        def walk(node: "Node") -> bool:
+            if node.start_point <= point <= node.end_point:
+                path.append(node)
+                for child in node.children:
+                    if walk(child):
+                        return True
+                return True
+            return False
+
+        walk(root)
+        return path
+
+    def get_injection_at_position(self, line: int, column: int) -> Optional[InjectedRegion]:
+        """Check if position is within an injected region (e.g., Jinja2)."""
+        point = (line, column)
+        for injection in self.injections:
+            if injection.start_point <= point <= injection.end_point:
+                return injection
+        return None
+
+    def get_context_at_position(self, line: int, column: int) -> AnsibleContext:
+        """Determine the Ansible context at a given position.
+
+        This is the key method for providers - it tells them what kind
+        of completions/hovers/definitions are appropriate.
+        """
+        # Check if we're in a Jinja2 injection first
+        injection = self.get_injection_at_position(line, column)
+        if injection:
+            return self._get_jinja_context(injection, line, column)
+
+        # Otherwise analyze the YAML structure
+        path = self.get_path_to_position(line, column)
+        return self._analyze_yaml_context(path)
+
+    def _get_jinja_context(
+        self, injection: InjectedRegion, line: int, column: int
+    ) -> AnsibleContext:
+        """Determine context within a Jinja2 expression."""
+        if injection.tree is None:
+            return AnsibleContext.JINJA_EXPRESSION
+
+        # TODO: Query the Jinja2 tree to determine if we're in:
+        # - A variable reference: {{ var }}
+        # - A filter: {{ var | filter }}
+        # - A test: {% if var is test %}
+        return AnsibleContext.JINJA_EXPRESSION
+
+    def _analyze_yaml_context(self, path: list["Node"]) -> AnsibleContext:
+        """Analyze YAML node path to determine Ansible context."""
+        if not path:
+            return AnsibleContext.UNKNOWN
+
+        # Walk up the path looking for structural markers
+        for i, node in enumerate(reversed(path)):
+            node_type = node.type
+
+            # Check for block_mapping_pair which contains key: value
+            if node_type == "block_mapping_pair":
+                key_node = node.child_by_field_name("key")
+                if key_node:
+                    key_text = self._get_node_text(key_node)
+
+                    # Task-level keywords
+                    if key_text == "tasks" or key_text == "pre_tasks" or key_text == "post_tasks":
+                        return AnsibleContext.TASK
+                    if key_text == "handlers":
+                        return AnsibleContext.HANDLER
+                    if key_text == "block":
+                        return AnsibleContext.BLOCK
+                    if key_text == "roles":
+                        return AnsibleContext.ROLE
+                    if key_text == "hosts":
+                        return AnsibleContext.PLAY
+
+                    # Check if this looks like a module invocation
+                    # (key that's not a known keyword, with dict/value after)
+                    if self._is_likely_module_name(key_text):
+                        value_node = node.child_by_field_name("value")
+                        if value_node:
+                            # Cursor is in the value = module options
+                            return AnsibleContext.MODULE_OPTIONS
+                        return AnsibleContext.MODULE_NAME
+
+        return AnsibleContext.UNKNOWN
+
+    def _get_node_text(self, node: "Node") -> str:
+        """Extract text content from a node."""
+        return self.content[node.start_byte:node.end_byte]
+
+    def _is_likely_module_name(self, key: str) -> bool:
+        """Check if a key looks like a module name vs a keyword."""
+        # Known task keywords that aren't modules
+        task_keywords = {
+            "name", "when", "register", "vars", "loop", "with_items",
+            "with_dict", "with_file", "notify", "tags", "become",
+            "become_user", "delegate_to", "ignore_errors", "changed_when",
+            "failed_when", "until", "retries", "delay", "no_log",
+            "environment", "args", "async", "poll", "throttle",
+        }
+        return key not in task_keywords
+#+end_src
+
+#+begin_src python :tangle src/ansible_ls/ansible_parser/parser_service.py :mkdirp t
+"""Parser service - the main interface for providers to parse and query documents.
+
+This service manages tree-sitter parsers and provides a clean API for
+the rest of the language server to work with Ansible documents.
+"""
+
+import logging
+import re
+from typing import Optional
+
+import tree_sitter_yaml
+from tree_sitter import Language, Parser, Tree
+
+from .ansible_document import AnsibleDocument, InjectedRegion
+
+logger = logging.getLogger(__name__)
+
+# Jinja2 pattern matching for injection detection
+JINJA_EXPRESSION_PATTERN = re.compile(r"\{\{.*?\}\}", re.DOTALL)
+JINJA_STATEMENT_PATTERN = re.compile(r"\{%.*?%\}", re.DOTALL)
+JINJA_COMMENT_PATTERN = re.compile(r"\{#.*?#\}", re.DOTALL)
+
+
+class ParserService:
+    """Service for parsing Ansible documents with tree-sitter.
+
+    Handles:
+    - YAML parsing with tree-sitter-yaml
+    - Jinja2 injection detection and parsing
+    - Document caching and incremental updates
+
+    Usage:
+        service = ParserService()
+        doc = service.parse(uri, content)
+        context = doc.get_context_at_position(line, col)
+    """
+
+    def __init__(self) -> None:
+        """Initialize the parser service with tree-sitter languages."""
+        # Initialize YAML parser
+        self._yaml_language = Language(tree_sitter_yaml.language())
+        self._yaml_parser = Parser(self._yaml_language)
+
+        # Initialize Jinja2 parser if available
+        self._jinja_language: Optional[Language] = None
+        self._jinja_parser: Optional[Parser] = None
+        self._init_jinja_parser()
+
+        # Document cache: uri -> AnsibleDocument
+        self._documents: dict[str, AnsibleDocument] = {}
+
+        logger.info("ParserService initialized")
+
+    def _init_jinja_parser(self) -> None:
+        """Try to initialize the Jinja2 parser."""
+        try:
+            import tree_sitter_jinja
+            self._jinja_language = Language(tree_sitter_jinja.language())
+            self._jinja_parser = Parser(self._jinja_language)
+            logger.info("Jinja2 parser initialized")
+        except ImportError:
+            logger.warning(
+                "tree_sitter_jinja not available - "
+                "Jinja2 parsing will be limited"
+            )
+
+    def parse(self, uri: str, content: str, version: int = 0) -> AnsibleDocument:
+        """Parse an Ansible document and return the parsed representation.
+
+        Args:
+            uri: Document URI for caching
+            content: The document text content
+            version: Document version for cache invalidation
+
+        Returns:
+            AnsibleDocument with parsed YAML tree and detected injections
+        """
+        # Check cache
+        if uri in self._documents:
+            cached = self._documents[uri]
+            if cached.version >= version and cached.content == content:
+                return cached
+
+        # Parse YAML
+        yaml_tree = self._yaml_parser.parse(content.encode("utf-8"))
+
+        # Detect and parse Jinja2 injections
+        injections = self._find_injections(content, yaml_tree)
+
+        # Create document
+        doc = AnsibleDocument(
+            uri=uri,
+            content=content,
+            yaml_tree=yaml_tree,
+            injections=injections,
+            version=version,
+        )
+
+        # Cache it
+        self._documents[uri] = doc
+
+        return doc
+
+    def parse_incremental(
+        self,
+        uri: str,
+        content: str,
+        version: int,
+        start_byte: int,
+        old_end_byte: int,
+        new_end_byte: int,
+        start_point: tuple[int, int],
+        old_end_point: tuple[int, int],
+        new_end_point: tuple[int, int],
+    ) -> AnsibleDocument:
+        """Incrementally update a parsed document.
+
+        Tree-sitter supports incremental parsing - we only need to
+        reparse the changed region, not the entire document.
+        """
+        if uri not in self._documents:
+            return self.parse(uri, content, version)
+
+        old_doc = self._documents[uri]
+        old_tree = old_doc.yaml_tree
+
+        # Edit the tree
+        old_tree.edit(
+            start_byte=start_byte,
+            old_end_byte=old_end_byte,
+            new_end_byte=new_end_byte,
+            start_point=start_point,
+            old_end_point=old_end_point,
+            new_end_point=new_end_point,
+        )
+
+        # Reparse with the edited tree (tree-sitter reuses unchanged parts)
+        new_tree = self._yaml_parser.parse(
+            content.encode("utf-8"),
+            old_tree,
+        )
+
+        # Re-detect injections (could be smarter about this)
+        injections = self._find_injections(content, new_tree)
+
+        doc = AnsibleDocument(
+            uri=uri,
+            content=content,
+            yaml_tree=new_tree,
+            injections=injections,
+            version=version,
+        )
+
+        self._documents[uri] = doc
+        return doc
+
+    def get_document(self, uri: str) -> Optional[AnsibleDocument]:
+        """Get a cached document by URI."""
+        return self._documents.get(uri)
+
+    def remove_document(self, uri: str) -> None:
+        """Remove a document from the cache."""
+        self._documents.pop(uri, None)
+
+    def _find_injections(self, content: str, yaml_tree: Tree) -> list[InjectedRegion]:
+        """Find Jinja2 injections in string nodes of the YAML tree.
+
+        We look for {{ }}, {% %}, and {# #} patterns within YAML string values.
+        """
+        injections: list[InjectedRegion] = []
+
+        # Query for string scalar nodes in the YAML tree
+        string_nodes = self._find_string_nodes(yaml_tree.root_node)
+
+        for node in string_nodes:
+            node_text = content[node.start_byte:node.end_byte]
+
+            # Check for Jinja patterns
+            for pattern in [
+                JINJA_EXPRESSION_PATTERN,
+                JINJA_STATEMENT_PATTERN,
+                JINJA_COMMENT_PATTERN,
+            ]:
+                for match in pattern.finditer(node_text):
+                    # Calculate absolute positions
+                    rel_start = match.start()
+                    rel_end = match.end()
+                    abs_start = node.start_byte + rel_start
+                    abs_end = node.start_byte + rel_end
+
+                    # Convert to line/column
+                    start_point = self._byte_to_point(content, abs_start)
+                    end_point = self._byte_to_point(content, abs_end)
+
+                    # Parse with Jinja2 parser if available
+                    jinja_tree = None
+                    if self._jinja_parser:
+                        jinja_text = match.group()
+                        jinja_tree = self._jinja_parser.parse(
+                            jinja_text.encode("utf-8")
+                        )
+
+                    injection = InjectedRegion(
+                        start_byte=abs_start,
+                        end_byte=abs_end,
+                        start_point=start_point,
+                        end_point=end_point,
+                        language="jinja2",
+                        tree=jinja_tree,
+                        original_text=match.group(),
+                    )
+                    injections.append(injection)
+
+        return injections
+
+    def _find_string_nodes(self, node) -> list:
+        """Recursively find all string scalar nodes in a tree."""
+        results = []
+
+        # String node types in tree-sitter-yaml
+        string_types = {
+            "string_scalar",
+            "double_quote_scalar",
+            "single_quote_scalar",
+            "block_scalar",
+            "flow_scalar",
+        }
+
+        if node.type in string_types:
+            results.append(node)
+
+        for child in node.children:
+            results.extend(self._find_string_nodes(child))
+
+        return results
+
+    def _byte_to_point(self, content: str, byte_offset: int) -> tuple[int, int]:
+        """Convert a byte offset to (line, column) tuple."""
+        line = 0
+        col = 0
+        current_byte = 0
+
+        for char in content:
+            if current_byte >= byte_offset:
+                break
+            if char == '\n':
+                line += 1
+                col = 0
+            else:
+                col += 1
+            current_byte += len(char.encode('utf-8'))
+
+        return (line, col)
+#+end_src
+
+#+begin_src python :tangle src/ansible_ls/ansible_parser/queries.py :mkdirp t
+"""Tree-sitter queries for Ansible-specific patterns.
+
+These queries help identify Ansible structures within the YAML AST:
+- Play definitions
+- Task lists
+- Module invocations
+- Variable references
+"""
+
+# Query to find play-level mappings (items in the top-level list with 'hosts' key)
+PLAY_QUERY = """
+(document
+  (block_node
+    (block_sequence
+      (block_sequence_item
+        (block_node
+          (block_mapping
+            (block_mapping_pair
+              key: (flow_node) @play_key
+              (#match? @play_key "^hosts$"))))))))
+"""
+
+# Query to find task definitions within plays
+TASK_QUERY = """
+(block_mapping_pair
+  key: (flow_node) @tasks_key
+  (#match? @tasks_key "^(tasks|pre_tasks|post_tasks|handlers)$")
+  value: (block_node
+    (block_sequence
+      (block_sequence_item) @task)))
+"""
+
+# Query to find module invocations (key-value pairs that aren't known keywords)
+MODULE_QUERY = """
+(block_mapping_pair
+  key: (flow_node) @module_name
+  value: (_) @module_args)
+"""
+
+# Query to find Jinja2 expressions in strings
+JINJA_QUERY = """
+[
+  (double_quote_scalar) @string
+  (single_quote_scalar) @string
+  (block_scalar) @string
+]
+"""
+
+
+def get_query_for_context(context_type: str) -> str:
+    """Get the appropriate query for a context type."""
+    queries = {
+        "play": PLAY_QUERY,
+        "task": TASK_QUERY,
+        "module": MODULE_QUERY,
+        "jinja": JINJA_QUERY,
+    }
+    return queries.get(context_type, "")
+#+end_src
+
+****** TODO injection queries
+:PROPERTIES:
+:ID:       26091bb5-7950-45f4-a7fe-581c20ec4936
+:END:
+the grammar actually shouldn't have a ton of stuff baked into it. Just a couple minimal data structures overlaid on YAML for ansible-specific types.
+
+might want =string_scalar= to be =double_quoted_scalar= or whatever's in the YAML grammar
+#+begin_src jinja2
+{%
+;; injections.scm - Identify where to inject Jinja2 in YAML
+((string_scalar) @injection.content 
+    (#match? @injection.content "^.*{{.*}}.*$|^.*{%.*%}.*$")
+    (#set! injection.language "jinja2"))
+%}
+#+end_src
+******* parsing and dispatching the injections in Python
+I don't need to modify the grammar.
+#+begin_src python
+    def parse_document(self, document_text: str):
+        """Parse a document, apply language injection, and return a structure."""
+        # 1. Parse the entire document with the primary language (YAML)
+        main_tree = self.yaml_parser.parse(bytes(document_text, "utf8"))
+
+        # 2. Execute the injection query to find nodes to re-parse
+        captures = self.injection_query.captures(main_tree.root_node)
+        injections = []
+
+        for node, tag in captures:
+            if tag == "injection.content":
+                # Get the text range of this node
+                start_byte, end_byte = node.start_byte, node.end_byte
+                injected_text = document_text[start_byte:end_byte]
+
+                # 3. Re-parse this text fragment with Jinja2
+                # You might need to clean up surrounding YAML quotes
+                jinja2_text = self._prepare_for_jinja_parsing(injected_text)
+                injected_tree = self.jinja2_parser.parse(
+                    bytes(jinja2_text, "utf8")
+                )
+
+                injections.append({
+                    'node': node,           # The YAML string node
+                    'tree': injected_tree,  # The new Jinja2 tree
+                    'language': 'jinja2',
+                    'byte_range': (start_byte, end_byte),
+                    'original_text': injected_text
+                })
+
+        return {
+            'main_tree': main_tree,
+            'main_language': 'yaml',
+            'injections': injections
+        }
+
+    def _prepare_for_jinja_parsing(self, text: str) -> str:
+        # Simple helper to strip surrounding YAML quotes if needed.
+        # Real implementation needs to handle single/double quotes, block scalars.
+        for quote in ("'", '"'):
+            if text.startswith(quote) and text.endswith(quote):
+                return text[1:-1]
+        return text
+#+end_src
+
+
 *** External Tool Integration
 :PROPERTIES:
 :ID:       external-tools
@@ -3200,44 +3197,6 @@ nnn
 :VISIBILITY: folded
 :END:
 
-*** TypeScript Codebase Overview
-:PROPERTIES:
-:ID:       typescript-overview
-:END:
-
-Referenced from [[id:architecture][Architecture]].
-The ansible-language-server is a TypeScript implementation of the Language Server Protocol for Ansible playbooks. Total: ~7,126 lines across 34 files.
-
-#+begin_src
-ansible-language-server/
-├── src/
-│   ├── server.ts                         # Entry point (66 lines)
-│   ├── ansibleLanguageService.ts         # LSP orchestrator (365 lines)
-│   ├── interfaces/                       # Data structures
-│   ├── providers/                        # LSP features
-│   ├── services/                         # Core business logic
-│   └── utils/                            # Helpers
-├── test/
-│   ├── providers/
-│   ├── utils/
-│   └── fixtures/
-└── bin/ansible-language-server           # CLI entry
-#+end_src
-
-Key modules by complexity:
-
-| Module                    | Lines | Complexity |
-|---------------------------+-------+------------|
-| executionEnvironment.ts   |   536 | High       |
-| completionProvider.ts     |   666 | High       |
-| yaml.ts                   |   663 | High       |
-| ansible.ts                |   722 | Low        |
-| ansibleLanguageService.ts |   365 | Medium     |
-| docsLibrary.ts            |   275 | Medium     |
-
-
-
-
 *** Package Initialization
 :PROPERTIES:
 :ID:       package-init
@@ -3252,9 +3211,9 @@ __version__ = "0.1.0"
 #+begin_src python :tangle src/ansible_ls/utils/__init__.py :mkdirp t
 """Utility functions."""
 
-from .yaml_utils import get_node_at_position, parse_yaml
+from .parse_ansible import get_node_at_position, parse_ansible
 
-__all__ = ["get_node_at_position", "parse_yaml"]
+__all__ = ["get_node_at_position", "parse_ansible"]
 #+end_src
 ** TODO multiple yaml grammars
   [2026-02-03 Tue]
