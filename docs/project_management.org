@@ -54,55 +54,9 @@
 - [ ] Write extensive tests with fixture playbooks
 
 
-** TODO Broken Tests
-:PROPERTIES:
-:ID:       b3d6efec-9644-4b4f-b4fe-2f3a572a7273
-:END:
-
-- Note taken on [2026-02-04 Wed 16:32] \\
-  Jinja2 imports (I think it actually comes with Ansible?) but the =repr= filter/plugin/whatever is missing. Do we need to import it? what's going on?
-#+begin_src bash :results output :wrap example :dir ..
-uv run pytest tests/ -v
-#+end_src
-
-#+RESULTS:
-#+begin_example
-============================= test session starts ==============================
-platform linux -- Python 3.14.2, pytest-9.0.2, pluggy-1.6.0 -- /home/chad/code/ansible-language-server/.venv/bin/python3
-cachedir: .pytest_cache
-rootdir: /home/chad/code/ansible-language-server
-configfile: pyproject.toml
-plugins: asyncio-1.3.0
-asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
-collecting ... collected 22 items
-
-tests/services/ansible_parser/test_ansible_parser.py::TestAnsibleParsing::test_parse_simple_yaml PASSED [  4%]
-tests/services/ansible_parser/test_ansible_parser.py::TestAnsibleParsing::test_parse_playbook PASSED [  9%]
-tests/services/ansible_parser/test_ansible_parser.py::TestAnsibleParsing::test_get_node_at_position PASSED [ 13%]
-tests/services/test_settings_manager.py::TestSettingsManager::test_get_returns_default_settings PASSED [ 18%]
-tests/services/test_settings_manager.py::TestSettingsManager::test_get_caches_settings PASSED [ 22%]
-tests/services/test_settings_manager.py::TestSettingsManager::test_invalidate_clears_cache PASSED [ 27%]
-tests/services/test_settings_manager.py::TestSettingsManager::test_invalidate_all_clears_everything PASSED [ 31%]
-tests/tools/test_extract_schema.py::TestKeywordExtraction::test_returns_dict_with_contexts PASSED [ 36%]
-tests/tools/test_extract_schema.py::TestKeywordExtraction::test_values_are_lists PASSED [ 40%]
-tests/tools/test_extract_schema.py::TestJinjaFilterExtraction::test_returns_dict PASSED [ 45%]
-tests/tools/test_extract_schema.py::TestJinjaFilterExtraction::test_filter_has_metadata PASSED [ 50%]
-tests/tools/test_extract_schema.py::TestJinjaTestExtraction::test_returns_dict PASSED [ 54%]
-tests/tools/test_extract_schema.py::TestJinjaTestExtraction::test_test_has_metadata PASSED [ 59%]
-tests/tools/test_extract_schema.py::TestLookupExtraction::test_returns_dict PASSED [ 63%]
-tests/tools/test_extract_schema.py::TestLookupExtraction::test_lookup_structure PASSED [ 68%]
-tests/tools/test_extract_schema.py::TestMagicVariableExtraction::test_extracts_magic_variables PASSED [ 72%]
-tests/tools/test_extract_schema.py::TestMagicVariableExtraction::test_magic_variable_has_scope PASSED [ 77%]
-tests/tools/test_extract_schema.py::TestMagicVariableExtraction::test_magic_variable_has_description PASSED [ 81%]
-tests/tools/test_extract_schema.py::TestKeywordMetadataExtraction::test_returns_dict PASSED [ 86%]
-tests/tools/test_extract_schema.py::TestKeywordMetadataExtraction::test_metadata_structure_when_present PASSED [ 90%]
-tests/tools/test_extract_schema.py::TestMainOutput::test_main_creates_schema_directory PASSED [ 95%]
-tests/tools/test_extract_schema.py::TestMainOutput::test_generated_modules_are_valid_python PASSED [100%]
-
-============================== 22 passed in 0.33s ==============================
-#+end_example
-
 ** TODO multiple yaml grammars
+- Note taken on [2026-02-04 Wed 16:45] \\
+  I need to decide on one of these grammars based on source, completeness and function, and then package it securely. If the ideal solution is forking for routine maintenance or security patches, ok stub it out. Also willing to glue them together with a supermonorepo and build queries if they're compatible. But nothing that stops me from hacking on other features, only plans and templates and secure mvp to hack with
   [2026-02-03 Tue]
   [[id:5a3be352-f776-4bc1-b080-e6c0651cfffd][Why tree-sitter]]
   https://github.com/cathaysia/tree-sitter-jinja/releases/tag/v0.11.1 is more recent and I'll start here. It doesn't appear to be on pipi.
@@ -111,6 +65,6 @@ tests/tools/test_extract_schema.py::TestMainOutput::test_generated_modules_are_v
 
 
 
-  I found a third one on pypi but it's not published on github, and the homepage is broken. Super sus.
+  I found a third one on [[https://pypi.org/project/tree-sitter-jinja/][pypi]] but it's not published on github, and the homepage is broken. Super sus.
 
   But I installed it at tree_sitter_jinja.
