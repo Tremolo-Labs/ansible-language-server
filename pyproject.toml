@@ -18,6 +18,7 @@ dependencies = [
     "ansible-runner>=2.4.0",
     "tree-sitter-yaml>=0.7.2",
     "tree-sitter-jinja>=0.3.3",
+    "ansible>=10.7.0",
 ]
 
 [project.optional-dependencies]
