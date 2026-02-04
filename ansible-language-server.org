@@ -713,12 +713,10 @@ I don't need to modify the grammar.
 #+end_src
 
 
-*** TODO Data Models
+*** Data Models
 :PROPERTIES:
 :ID:       data-models
 :END:
-- Note taken on [2026-02-03 Tue 20:29] \\
-  generate data models/types from the extracted metadata. Use 'em in the tree-sitter queries.
 
 **** TODO Metadata Extraction Script
 :PROPERTIES:

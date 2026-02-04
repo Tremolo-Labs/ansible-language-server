@@ -15,7 +15,6 @@ dependencies = [
     "attrs>=23.0.0",
     "tree-sitter>=0.23.0",
     "lsprotocol>=2025.0.0",
-    "tree-sitter-jinja>=0.3.3",
 ]
 
 [project.optional-dependencies]
