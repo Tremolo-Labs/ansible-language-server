@@ -3,19 +3,18 @@
 Port of src/utils/yaml.ts
 """
 
-from typing import Optional
-
 import tree_sitter_yaml
-import tree-sitter-jinja # fixme 
-from tree_sitter import Language, Parser
+from tree_sitter import Language, Parser, Tree
 
 # Initialize tree-sitter YAML parser (tree-sitter 0.23+ API)
-_yaml = Language(tree_sitter_yaml.language())
-_jinja = Language(tree_sitter_yaml.language()) # hope I'm not pwnd
-_parser = Parser(_language)
+_yaml_language = Language(tree_sitter_yaml.language())
+_parser = Parser(_yaml_language)
+
+# Jinja parser is optional - initialized lazily in ParserService
+# Use ParserService for Jinja2 support rather than this module directly
 
 
-def parse_ansible(content: str) -> "tree_sitter.Tree":
+def parse_ansible(content: str) -> Tree:
     """Parse YAML content and return tree-sitter AST."""
     return _parser.parse(content.encode("utf-8"))
 

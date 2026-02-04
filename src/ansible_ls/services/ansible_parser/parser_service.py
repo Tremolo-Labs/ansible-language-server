@@ -54,7 +54,7 @@ class ParserService:
     def _init_jinja_parser(self) -> None:
         """Try to initialize the Jinja2 parser."""
         try:
-            import tree_sitter_jinja
+            import tree_sitter_jinja  # from tree-sitter-jinja3 package
             self._jinja_language = Language(tree_sitter_jinja.language())
             self._jinja_parser = Parser(self._jinja_language)
             logger.info("Jinja2 parser initialized")
