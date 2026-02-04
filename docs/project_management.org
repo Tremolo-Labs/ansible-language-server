@@ -34,12 +34,12 @@
    - [ ] [[id:hover-provider][HoverProvider]] - keyword and module docs on hover
    - [ ] [[id:definition-provider][DefinitionProvider]] - go-to-definition for roles/includes
    - [ ] [[id:completion-provider][CompletionProvider]] - context-aware completions
-**** TODO implement all the other providers
+**** TODO add all the other cool providers to this list
 :PROPERTIES:
 :ID:       8dbf8991-396b-4d72-98a5-c2d2bd8a2bd2
 :END:
 
-*** TODO Completion Provider Checklist
+**** TODO Completion Provider Checklist
 :PROPERTIES:
 :ID:       00ee4f24-8ff6-4eac-b63e-86d381429caa
 :END:
@@ -54,17 +54,3 @@
 - [ ] Write extensive tests with fixture playbooks
 
 
-** TODO multiple yaml grammars
-- Note taken on [2026-02-04 Wed 16:45] \\
-  I need to decide on one of these grammars based on source, completeness and function, and then package it securely. If the ideal solution is forking for routine maintenance or security patches, ok stub it out. Also willing to glue them together with a supermonorepo and build queries if they're compatible. But nothing that stops me from hacking on other features, only plans and templates and secure mvp to hack with
-  [2026-02-03 Tue]
-  [[id:5a3be352-f776-4bc1-b080-e6c0651cfffd][Why tree-sitter]]
-  https://github.com/cathaysia/tree-sitter-jinja/releases/tag/v0.11.1 is more recent and I'll start here. It doesn't appear to be on pipi.
-
-  https://github.com/dbt-labs/tree-sitter-jinja2/releases/tag/v0.1.0 was last released in '21 but is owned by a shop.. Ugh, it's not installing cuz it was made from an old tree-sitter.
-
-
-
-  I found a third one on [[https://pypi.org/project/tree-sitter-jinja/][pypi]] but it's not published on github, and the homepage is broken. Super sus.
-
-  But I installed it at tree_sitter_jinja.
