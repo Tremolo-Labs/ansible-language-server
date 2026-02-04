@@ -63,7 +63,7 @@ def extract_keyword_metadata() -> dict[str, dict[str, Any]]:
                     "isa": getattr(attr, "isa", None),
                     "required": getattr(attr, "required", False),
                     "default": _serialize_default(getattr(attr, "default", None)),
-                    "listof": getattr(attr, "listof", None),
+                    "listof": _serialize_default(getattr(attr, "listof", None)),
                     "alias": getattr(attr, "alias", None),
                 }
 
@@ -381,6 +381,8 @@ def _serialize_default(value: Any) -> Any:
         return None
     if callable(value):
         return f"<callable: {value.__name__}>"
+    if isinstance(value, type):
+        return value.__name__
     if isinstance(value, (str, int, float, bool)):
         return value
     if isinstance(value, (list, tuple)):
@@ -403,6 +405,9 @@ def render_templates(metadata: dict) -> None:
         loader=FileSystemLoader(TEMPLATE_DIR),
         keep_trailing_newline=True,
     )
+    # Register Python builtins as custom filters for generating Python literals
+    env.filters["repr"] = repr
+    env.filters["tuple"] = tuple
 
     # Template -> output filename
     templates = {

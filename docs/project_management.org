@@ -74,271 +74,32 @@ rootdir: /home/chad/code/ansible-language-server
 configfile: pyproject.toml
 plugins: asyncio-1.3.0
 asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
-collecting ... collected 28 items
+collecting ... collected 22 items
 
-tests/services/ansible_parser/test_ansible_parser.py::TestAnsibleParsing::test_parse_simple_yaml PASSED [  3%]
-tests/services/ansible_parser/test_ansible_parser.py::TestAnsibleParsing::test_parse_playbook PASSED [  7%]
-tests/services/ansible_parser/test_ansible_parser.py::TestAnsibleParsing::test_get_node_at_position PASSED [ 10%]
-tests/services/test_settings_manager.py::TestSettingsManager::test_get_returns_default_settings PASSED [ 14%]
-tests/services/test_settings_manager.py::TestSettingsManager::test_get_caches_settings PASSED [ 17%]
-tests/services/test_settings_manager.py::TestSettingsManager::test_invalidate_clears_cache PASSED [ 21%]
-tests/services/test_settings_manager.py::TestSettingsManager::test_invalidate_all_clears_everything PASSED [ 25%]
-tests/tools/test_extract_schema.py::TestKeywordExtraction::test_returns_dict_with_contexts PASSED [ 28%]
-tests/tools/test_extract_schema.py::TestKeywordExtraction::test_values_are_lists PASSED [ 32%]
-tests/tools/test_extract_schema.py::TestJinjaFilterExtraction::test_returns_dict PASSED [ 35%]
-tests/tools/test_extract_schema.py::TestJinjaFilterExtraction::test_filter_has_metadata PASSED [ 39%]
-tests/tools/test_extract_schema.py::TestJinjaTestExtraction::test_returns_dict PASSED [ 42%]
-tests/tools/test_extract_schema.py::TestJinjaTestExtraction::test_test_has_metadata PASSED [ 46%]
-tests/tools/test_extract_schema.py::TestLookupExtraction::test_returns_dict PASSED [ 50%]
-tests/tools/test_extract_schema.py::TestLookupExtraction::test_lookup_structure PASSED [ 53%]
-tests/tools/test_extract_schema.py::TestMagicVariableExtraction::test_extracts_magic_variables PASSED [ 57%]
-tests/tools/test_extract_schema.py::TestMagicVariableExtraction::test_magic_variable_has_scope PASSED [ 60%]
-tests/tools/test_extract_schema.py::TestMagicVariableExtraction::test_magic_variable_has_description PASSED [ 64%]
-tests/tools/test_extract_schema.py::TestKeywordMetadataExtraction::test_returns_dict PASSED [ 67%]
-tests/tools/test_extract_schema.py::TestKeywordMetadataExtraction::test_metadata_structure_when_present PASSED [ 71%]
-tests/tools/test_extract_schema.py::TestMainOutput::test_main_creates_schema_directory FAILED [ 75%]
-tests/tools/test_extract_schema.py::TestMainOutput::test_generated_modules_are_valid_python FAILED [ 78%]
-tests/tools/test_grammar_parsing.py::TestPlayParsing::test_simple_play SKIPPED [ 82%]
-tests/tools/test_grammar_parsing.py::TestPlayParsing::test_play_with_keywords SKIPPED [ 85%]
-tests/tools/test_grammar_parsing.py::TestTaskParsing::test_module_with_fqcn SKIPPED [ 89%]
-tests/tools/test_grammar_parsing.py::TestTaskParsing::test_task_with_loop SKIPPED [ 92%]
-tests/tools/test_grammar_parsing.py::TestJinjaParsing::test_simple_variable SKIPPED [ 96%]
-tests/tools/test_grammar_parsing.py::TestJinjaParsing::test_filter_chain SKIPPED [100%]
+tests/services/ansible_parser/test_ansible_parser.py::TestAnsibleParsing::test_parse_simple_yaml PASSED [  4%]
+tests/services/ansible_parser/test_ansible_parser.py::TestAnsibleParsing::test_parse_playbook PASSED [  9%]
+tests/services/ansible_parser/test_ansible_parser.py::TestAnsibleParsing::test_get_node_at_position PASSED [ 13%]
+tests/services/test_settings_manager.py::TestSettingsManager::test_get_returns_default_settings PASSED [ 18%]
+tests/services/test_settings_manager.py::TestSettingsManager::test_get_caches_settings PASSED [ 22%]
+tests/services/test_settings_manager.py::TestSettingsManager::test_invalidate_clears_cache PASSED [ 27%]
+tests/services/test_settings_manager.py::TestSettingsManager::test_invalidate_all_clears_everything PASSED [ 31%]
+tests/tools/test_extract_schema.py::TestKeywordExtraction::test_returns_dict_with_contexts PASSED [ 36%]
+tests/tools/test_extract_schema.py::TestKeywordExtraction::test_values_are_lists PASSED [ 40%]
+tests/tools/test_extract_schema.py::TestJinjaFilterExtraction::test_returns_dict PASSED [ 45%]
+tests/tools/test_extract_schema.py::TestJinjaFilterExtraction::test_filter_has_metadata PASSED [ 50%]
+tests/tools/test_extract_schema.py::TestJinjaTestExtraction::test_returns_dict PASSED [ 54%]
+tests/tools/test_extract_schema.py::TestJinjaTestExtraction::test_test_has_metadata PASSED [ 59%]
+tests/tools/test_extract_schema.py::TestLookupExtraction::test_returns_dict PASSED [ 63%]
+tests/tools/test_extract_schema.py::TestLookupExtraction::test_lookup_structure PASSED [ 68%]
+tests/tools/test_extract_schema.py::TestMagicVariableExtraction::test_extracts_magic_variables PASSED [ 72%]
+tests/tools/test_extract_schema.py::TestMagicVariableExtraction::test_magic_variable_has_scope PASSED [ 77%]
+tests/tools/test_extract_schema.py::TestMagicVariableExtraction::test_magic_variable_has_description PASSED [ 81%]
+tests/tools/test_extract_schema.py::TestKeywordMetadataExtraction::test_returns_dict PASSED [ 86%]
+tests/tools/test_extract_schema.py::TestKeywordMetadataExtraction::test_metadata_structure_when_present PASSED [ 90%]
+tests/tools/test_extract_schema.py::TestMainOutput::test_main_creates_schema_directory PASSED [ 95%]
+tests/tools/test_extract_schema.py::TestMainOutput::test_generated_modules_are_valid_python PASSED [100%]
 
-=================================== FAILURES ===================================
-______________ TestMainOutput.test_main_creates_schema_directory _______________
-
-self = <test_extract_schema.TestMainOutput object at 0x7fc2f2a3c550>
-tmp_path = PosixPath('/tmp/pytest-of-chad/pytest-21/test_main_creates_schema_direc0')
-monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fc2f2c27bf0>
-
-    def test_main_creates_schema_directory(self, tmp_path, monkeypatch):
-        """Main should create output directory with schema files."""
-        from tools import extract_schema
-    
-        monkeypatch.chdir(tmp_path)
->       extract_schema.main()
-
-/home/chad/code/ansible-language-server/tests/tools/test_extract_schema.py:157: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-/home/chad/code/ansible-language-server/tools/extract_schema.py:456: in main
-    render_templates(metadata)
-/home/chad/code/ansible-language-server/tools/extract_schema.py:419: in render_templates
-    template = env.get_template(template_name)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/home/chad/code/ansible-language-server/.venv/lib/python3.14/site-packages/jinja2/environment.py:1016: in get_template
-    return self._load_template(name, globals)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/home/chad/code/ansible-language-server/.venv/lib/python3.14/site-packages/jinja2/environment.py:975: in _load_template
-    template = self.loader.load(self, name, self.make_globals(globals))
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/home/chad/code/ansible-language-server/.venv/lib/python3.14/site-packages/jinja2/loaders.py:138: in load
-    code = environment.compile(source, name, filename)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/home/chad/code/ansible-language-server/.venv/lib/python3.14/site-packages/jinja2/environment.py:771: in compile
-    self.handle_exception(source=source_hint)
-/home/chad/code/ansible-language-server/.venv/lib/python3.14/site-packages/jinja2/environment.py:942: in handle_exception
-    raise rewrite_traceback_stack(source=source)
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-    """Ansible type schemas - auto-generated from Ansible source.
-    
-    Each TypeSchema describes the structure of an Ansible datatype
-    (play, task, block, role) with field definitions.
-    
-    DO NOT EDIT. Regenerate with: python tools/extract_schema.py
-    """
-    
-    from dataclasses import dataclass
-    from functools import cached_property
-    from typing import Any, Optional
-    
-    
-    @dataclass(frozen=True, slots=True)
-    class FieldDef:
-        """Definition of a field in an Ansible datatype."""
-        name: str
-        isa: Optional[str] = None
-        required: bool = False
-        default: Any = None
-        listof: Optional[str] = None
-        alias: Optional[str] = None
-    
-    
-    @dataclass(frozen=True)
-    class TypeSchema:
-        """Schema for an Ansible datatype (play, task, block, role)."""
-        name: str
-        fields: tuple[FieldDef, ...]
-    
-        @cached_property
-        def field_names(self) -> frozenset[str]:
-            """All valid field names for this type."""
-            return frozenset(f.name for f in self.fields)
-    
-        @cached_property
-        def required_fields(self) -> frozenset[str]:
-            """Fields that must be present (fingerprint for identification)."""
-            return frozenset(f.name for f in self.fields if f.required)
-    
-        @cached_property
-        def field_map(self) -> dict[str, FieldDef]:
-            """Lookup field by name."""
-            return {f.name: f for f in self.fields}
-    
-        def __contains__(self, name: str) -> bool:
-            return name in self.field_names
-    
-        def __getitem__(self, name: str) -> FieldDef:
-            return self.field_map[name]
-    
-        def get(self, name: str) -> Optional[FieldDef]:
-            return self.field_map.get(name)
-    
-        def matches(self, keys: set[str]) -> bool:
-            """Check if keys contain all required fields (fingerprint match)."""
-            return self.required_fields <= keys
-    
-    
-    {% for ctx_name, fields in keyword_metadata.items() %}
-    {{ ctx_name | upper }} = TypeSchema(
-        name="{{ ctx_name }}",
-        fields=(
-    {%- for name, info in fields | dictsort %}
->           FieldDef({{ name | repr }}, {{ info.isa | repr }}, {{ info.required }}, {{ info.default | repr }}, {{ info.listof | repr }}, {{ info.alias | repr }}),
-    ^^^^^^^^^^^^^^^^^^^^^^^^^
-E           jinja2.exceptions.TemplateAssertionError: No filter named 'repr'.
-
-/home/chad/code/ansible-language-server/tools/templates/schema.py.j2:65: TemplateAssertionError
------------------------------ Captured stdout call -----------------------------
-Extracted schema from Ansible 2.20.2:
-  play: 42
-  task: 42
-  block: 31
-  role: 26
-  jinja_filters: 122
-  jinja_tests: 88
-  lookups: 25
-  magic_variables: 35
-____________ TestMainOutput.test_generated_modules_are_valid_python ____________
-
-self = <test_extract_schema.TestMainOutput object at 0x7fc2f2a3c690>
-tmp_path = PosixPath('/tmp/pytest-of-chad/pytest-21/test_generated_modules_are_val0')
-monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fc2f2a5d370>
-
-    def test_generated_modules_are_valid_python(self, tmp_path, monkeypatch):
-        """Generated modules should be valid Python."""
-        import ast
-        from tools import extract_schema
-    
-        monkeypatch.chdir(tmp_path)
->       extract_schema.main()
-
-/home/chad/code/ansible-language-server/tests/tools/test_extract_schema.py:173: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-/home/chad/code/ansible-language-server/tools/extract_schema.py:456: in main
-    render_templates(metadata)
-/home/chad/code/ansible-language-server/tools/extract_schema.py:419: in render_templates
-    template = env.get_template(template_name)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/home/chad/code/ansible-language-server/.venv/lib/python3.14/site-packages/jinja2/environment.py:1016: in get_template
-    return self._load_template(name, globals)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/home/chad/code/ansible-language-server/.venv/lib/python3.14/site-packages/jinja2/environment.py:975: in _load_template
-    template = self.loader.load(self, name, self.make_globals(globals))
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/home/chad/code/ansible-language-server/.venv/lib/python3.14/site-packages/jinja2/loaders.py:138: in load
-    code = environment.compile(source, name, filename)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/home/chad/code/ansible-language-server/.venv/lib/python3.14/site-packages/jinja2/environment.py:771: in compile
-    self.handle_exception(source=source_hint)
-/home/chad/code/ansible-language-server/.venv/lib/python3.14/site-packages/jinja2/environment.py:942: in handle_exception
-    raise rewrite_traceback_stack(source=source)
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-    """Ansible type schemas - auto-generated from Ansible source.
-    
-    Each TypeSchema describes the structure of an Ansible datatype
-    (play, task, block, role) with field definitions.
-    
-    DO NOT EDIT. Regenerate with: python tools/extract_schema.py
-    """
-    
-    from dataclasses import dataclass
-    from functools import cached_property
-    from typing import Any, Optional
-    
-    
-    @dataclass(frozen=True, slots=True)
-    class FieldDef:
-        """Definition of a field in an Ansible datatype."""
-        name: str
-        isa: Optional[str] = None
-        required: bool = False
-        default: Any = None
-        listof: Optional[str] = None
-        alias: Optional[str] = None
-    
-    
-    @dataclass(frozen=True)
-    class TypeSchema:
-        """Schema for an Ansible datatype (play, task, block, role)."""
-        name: str
-        fields: tuple[FieldDef, ...]
-    
-        @cached_property
-        def field_names(self) -> frozenset[str]:
-            """All valid field names for this type."""
-            return frozenset(f.name for f in self.fields)
-    
-        @cached_property
-        def required_fields(self) -> frozenset[str]:
-            """Fields that must be present (fingerprint for identification)."""
-            return frozenset(f.name for f in self.fields if f.required)
-    
-        @cached_property
-        def field_map(self) -> dict[str, FieldDef]:
-            """Lookup field by name."""
-            return {f.name: f for f in self.fields}
-    
-        def __contains__(self, name: str) -> bool:
-            return name in self.field_names
-    
-        def __getitem__(self, name: str) -> FieldDef:
-            return self.field_map[name]
-    
-        def get(self, name: str) -> Optional[FieldDef]:
-            return self.field_map.get(name)
-    
-        def matches(self, keys: set[str]) -> bool:
-            """Check if keys contain all required fields (fingerprint match)."""
-            return self.required_fields <= keys
-    
-    
-    {% for ctx_name, fields in keyword_metadata.items() %}
-    {{ ctx_name | upper }} = TypeSchema(
-        name="{{ ctx_name }}",
-        fields=(
-    {%- for name, info in fields | dictsort %}
->           FieldDef({{ name | repr }}, {{ info.isa | repr }}, {{ info.required }}, {{ info.default | repr }}, {{ info.listof | repr }}, {{ info.alias | repr }}),
-    ^^^^^^^^^^^^^^^^^^^^^^^^^
-E           jinja2.exceptions.TemplateAssertionError: No filter named 'repr'.
-
-/home/chad/code/ansible-language-server/tools/templates/schema.py.j2:65: TemplateAssertionError
------------------------------ Captured stdout call -----------------------------
-Extracted schema from Ansible 2.20.2:
-  play: 42
-  task: 42
-  block: 31
-  role: 26
-  jinja_filters: 122
-  jinja_tests: 88
-  lookups: 25
-  magic_variables: 35
-=========================== short test summary info ============================
-FAILED tests/tools/test_extract_schema.py::TestMainOutput::test_main_creates_schema_directory
-FAILED tests/tools/test_extract_schema.py::TestMainOutput::test_generated_modules_are_valid_python
-=================== 2 failed, 20 passed, 6 skipped in 0.41s ====================
+============================== 22 passed in 0.33s ==============================
 #+end_example
 
 ** TODO multiple yaml grammars
