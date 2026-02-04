@@ -1,0 +1,1709 @@
+* Ansible Language Server
+:PROPERTIES:
+:VISIBILITY: folded
+:ID:       47687761-e532-460c-9bec-ea6a1708fd0a
+:END:
+
+** TODO Progress
+:PROPERTIES:
+:ID:       042d8753-3757-48a6-b5a0-251196171795
+:END:
+
+
+*** TODO Implement services
+:PROPERTIES:
+:ID:       99451843-ca6a-4123-abc7-7db9c6e525ad
+:END:
+   - [X] [[id:yaml-parsing][Parsing]]
+     - [X] basic service for providers to query (ParserService, AnsibleDocument)
+     - [X] injection detection for Jinja2 (regex-based, tree optional)
+     - [X] injection queries for Jinja2 context (filter vs test vs var)
+     - [X] tree-sitter queries for ansible datatypes
+   - [-] [[id:data-models][Data Models]]
+     - [X] unified extract + generate script (tools/extract_schema.py)
+     - [X] run and verify output
+   - [ ] [[id:settings-service][SettingsManager]] - settings caching and LSP config
+   - [ ] [[id:workspace-service][WorkspaceManager]] - multi-folder context
+   - [ ] [[id:docs-library][DocsLibrary]] - module documentation cache
+   - [ ] [[id:validation-service][ValidationManager]] - ansible-lint integration
+
+*** TODO Implement providers
+:PROPERTIES:
+:ID:       fb9a12cd-cf78-4d43-8130-eef19050a1e9
+:END:
+   - [ ] [[id:hover-provider][HoverProvider]] - keyword and module docs on hover
+   - [ ] [[id:definition-provider][DefinitionProvider]] - go-to-definition for roles/includes
+   - [ ] [[id:completion-provider][CompletionProvider]] - context-aware completions
+**** TODO implement all the other providers
+:PROPERTIES:
+:ID:       8dbf8991-396b-4d72-98a5-c2d2bd8a2bd2
+:END:
+
+*** TODO Completion Provider Checklist
+:PROPERTIES:
+:ID:       00ee4f24-8ff6-4eac-b63e-86d381429caa
+:END:
+- [ ] Register completion provider with =@server.feature=
+- [ ] Implement context detection (play/task/block/role/module option)
+- [ ] Implement keyword completion for each context
+- [ ] Implement module name completion (FQCN + short names)
+- [ ] Implement module option completion with suboptions
+- [ ] Implement value completion (booleans, choices)
+- [ ] Handle trigger characters (=:=, =-=)
+- [ ] Implement completion resolve for lazy documentation
+- [ ] Write extensive tests with fixture playbooks
+
+
+** TODO Broken Tests
+:PROPERTIES:
+:ID:       b3d6efec-9644-4b4f-b4fe-2f3a572a7273
+:END:
+
+#+begin_src bash :results output :wrap example
+uv run pytest tests/ -v
+#+end_src
+
+#+RESULTS:
+#+begin_example
+============================= test session starts ==============================
+platform linux -- Python 3.14.2, pytest-9.0.2, pluggy-1.6.0 -- /home/chad/code/ansible-language-server/.venv/bin/python3
+cachedir: .pytest_cache
+rootdir: /home/chad/code/ansible-language-server
+configfile: pyproject.toml
+plugins: asyncio-1.3.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 61 items
+
+tests/services/ansible_parser/test_ansible_parser.py::TestAnsibleParsing::test_parse_simple_ansible FAILED [  1%]
+tests/services/ansible_parser/test_ansible_parser.py::TestAnsibleParsing::test_parse_playbook FAILED [  3%]
+tests/services/ansible_parser/test_ansible_parser.py::TestAnsibleParsing::test_get_node_at_position FAILED [  4%]
+tests/services/test_settings_manager.py::TestSettingsManager::test_get_returns_default_settings PASSED [  6%]
+tests/services/test_settings_manager.py::TestSettingsManager::test_get_caches_settings PASSED [  8%]
+tests/services/test_settings_manager.py::TestSettingsManager::test_invalidate_clears_cache PASSED [  9%]
+tests/services/test_settings_manager.py::TestSettingsManager::test_invalidate_all_clears_everything PASSED [ 11%]
+tests/tools/test_extract_keywords.py::TestKeywordExtraction::test_play_keywords_include_hosts FAILED [ 13%]
+tests/tools/test_extract_keywords.py::TestKeywordExtraction::test_task_keywords_include_name FAILED [ 14%]
+tests/tools/test_extract_keywords.py::TestKeywordExtraction::test_task_keywords_include_register FAILED [ 16%]
+tests/tools/test_extract_keywords.py::TestKeywordExtraction::test_task_keywords_include_when FAILED [ 18%]
+tests/tools/test_extract_keywords.py::TestKeywordExtraction::test_block_keywords_include_rescue FAILED [ 19%]
+tests/tools/test_extract_keywords.py::TestKeywordExtraction::test_block_keywords_include_always FAILED [ 21%]
+tests/tools/test_extract_keywords.py::TestKeywordExtraction::test_role_keywords_exist FAILED [ 22%]
+tests/tools/test_extract_keywords.py::TestJinjaFilterExtraction::test_extracts_ansible_filters FAILED [ 24%]
+tests/tools/test_extract_keywords.py::TestJinjaFilterExtraction::test_extracts_jinja2_builtin_filters FAILED [ 26%]
+tests/tools/test_extract_keywords.py::TestJinjaFilterExtraction::test_filter_has_metadata PASSED [ 27%]
+tests/tools/test_extract_keywords.py::TestJinjaTestExtraction::test_extracts_ansible_tests FAILED [ 29%]
+tests/tools/test_extract_keywords.py::TestJinjaTestExtraction::test_extracts_jinja2_builtin_tests FAILED [ 31%]
+tests/tools/test_extract_keywords.py::TestJinjaTestExtraction::test_test_has_metadata PASSED [ 32%]
+tests/tools/test_extract_keywords.py::TestLookupExtraction::test_extracts_lookup_plugins FAILED [ 34%]
+tests/tools/test_extract_keywords.py::TestLookupExtraction::test_lookup_has_options FAILED [ 36%]
+tests/tools/test_extract_keywords.py::TestLookupExtraction::test_lookup_option_structure PASSED [ 37%]
+tests/tools/test_extract_keywords.py::TestMagicVariableExtraction::test_extracts_magic_variables PASSED [ 39%]
+tests/tools/test_extract_keywords.py::TestMagicVariableExtraction::test_magic_variable_has_scope PASSED [ 40%]
+tests/tools/test_extract_keywords.py::TestMagicVariableExtraction::test_magic_variable_has_description PASSED [ 42%]
+tests/tools/test_extract_keywords.py::TestKeywordMetadataExtraction::test_extracts_keyword_metadata FAILED [ 44%]
+tests/tools/test_extract_keywords.py::TestKeywordMetadataExtraction::test_metadata_includes_isa FAILED [ 45%]
+tests/tools/test_extract_keywords.py::TestKeywordMetadataExtraction::test_metadata_includes_required FAILED [ 47%]
+tests/tools/test_extract_keywords.py::TestMainOutput::test_main_creates_type_modules FAILED [ 49%]
+tests/tools/test_extract_keywords.py::TestMainOutput::test_generated_modules_are_valid_python FAILED [ 50%]
+tests/tools/test_extract_schema.py::TestKeywordExtraction::test_play_keywords_include_hosts FAILED [ 52%]
+tests/tools/test_extract_schema.py::TestKeywordExtraction::test_task_keywords_include_name FAILED [ 54%]
+tests/tools/test_extract_schema.py::TestKeywordExtraction::test_task_keywords_include_register FAILED [ 55%]
+tests/tools/test_extract_schema.py::TestKeywordExtraction::test_task_keywords_include_when FAILED [ 57%]
+tests/tools/test_extract_schema.py::TestKeywordExtraction::test_block_keywords_include_rescue FAILED [ 59%]
+tests/tools/test_extract_schema.py::TestKeywordExtraction::test_block_keywords_include_always FAILED [ 60%]
+tests/tools/test_extract_schema.py::TestKeywordExtraction::test_role_keywords_exist FAILED [ 62%]
+tests/tools/test_extract_schema.py::TestJinjaFilterExtraction::test_extracts_ansible_filters FAILED [ 63%]
+tests/tools/test_extract_schema.py::TestJinjaFilterExtraction::test_extracts_jinja2_builtin_filters FAILED [ 65%]
+tests/tools/test_extract_schema.py::TestJinjaFilterExtraction::test_filter_has_metadata PASSED [ 67%]
+tests/tools/test_extract_schema.py::TestJinjaTestExtraction::test_extracts_ansible_tests FAILED [ 68%]
+tests/tools/test_extract_schema.py::TestJinjaTestExtraction::test_extracts_jinja2_builtin_tests FAILED [ 70%]
+tests/tools/test_extract_schema.py::TestJinjaTestExtraction::test_test_has_metadata PASSED [ 72%]
+tests/tools/test_extract_schema.py::TestLookupExtraction::test_extracts_lookup_plugins FAILED [ 73%]
+tests/tools/test_extract_schema.py::TestLookupExtraction::test_lookup_has_options FAILED [ 75%]
+tests/tools/test_extract_schema.py::TestLookupExtraction::test_lookup_option_structure FAILED [ 77%]
+tests/tools/test_extract_schema.py::TestMagicVariableExtraction::test_extracts_magic_variables PASSED [ 78%]
+tests/tools/test_extract_schema.py::TestMagicVariableExtraction::test_magic_variable_has_scope PASSED [ 80%]
+tests/tools/test_extract_schema.py::TestMagicVariableExtraction::test_magic_variable_has_description PASSED [ 81%]
+tests/tools/test_extract_schema.py::TestKeywordMetadataExtraction::test_extracts_keyword_metadata PASSED [ 83%]
+tests/tools/test_extract_schema.py::TestKeywordMetadataExtraction::test_metadata_includes_isa PASSED [ 85%]
+tests/tools/test_extract_schema.py::TestKeywordMetadataExtraction::test_metadata_includes_required PASSED [ 86%]
+tests/tools/test_extract_schema.py::TestMainOutput::test_main_creates_type_modules FAILED [ 88%]
+tests/tools/test_extract_schema.py::TestMainOutput::test_generated_modules_are_valid_python FAILED [ 90%]
+tests/tools/test_grammar_parsing.py::TestPlayParsing::test_simple_play SKIPPED [ 91%]
+tests/tools/test_grammar_parsing.py::TestPlayParsing::test_play_with_keywords SKIPPED [ 93%]
+tests/tools/test_grammar_parsing.py::TestTaskParsing::test_module_with_fqcn SKIPPED [ 95%]
+tests/tools/test_grammar_parsing.py::TestTaskParsing::test_task_with_loop SKIPPED [ 96%]
+tests/tools/test_grammar_parsing.py::TestJinjaParsing::test_simple_variable SKIPPED [ 98%]
+tests/tools/test_grammar_parsing.py::TestJinjaParsing::test_filter_chain SKIPPED [100%]
+
+=================================== FAILURES ===================================
+_________________ TestAnsibleParsing.test_parse_simple_ansible _________________
+
+self = <test_ansible_parser.TestAnsibleParsing object at 0x7fe1bcb95310>
+
+    def test_parse_simple_ansible(self):
+        """Test parsing simple ANSIBLE content."""
+        content = "key: value"
+>       tree = ParserService.parse("", content)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: ParserService.parse() missing 1 required positional argument: 'content'
+
+tests/services/ansible_parser/test_ansible_parser.py:28: TypeError
+____________________ TestAnsibleParsing.test_parse_playbook ____________________
+
+self = <test_ansible_parser.TestAnsibleParsing object at 0x7fe1bcb94e10>
+
+        def test_parse_playbook(self):
+            """Test parsing Ansible playbook structure."""
+            content = """---
+    - name: Test play
+      hosts: all
+      tasks:
+        - name: Test task
+          debug:
+            msg: "hello"
+    """
+>           tree = ParserService.parse(content)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           TypeError: ParserService.parse() missing 2 required positional arguments: 'uri' and 'content'
+
+tests/services/ansible_parser/test_ansible_parser.py:42: TypeError
+_________________ TestAnsibleParsing.test_get_node_at_position _________________
+
+self = <test_ansible_parser.TestAnsibleParsing object at 0x7fe1bd3d9480>
+
+    def test_get_node_at_position(self):
+        """Test finding node at cursor position."""
+        content = "key: value"
+>       tree = ParserService.parse("", content)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: ParserService.parse() missing 1 required positional argument: 'content'
+
+tests/services/ansible_parser/test_ansible_parser.py:48: TypeError
+____________ TestKeywordExtraction.test_play_keywords_include_hosts ____________
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+>           from ansible.playbook.play import Play
+E           ModuleNotFoundError: No module named 'ansible'
+
+tools/extract_keywords.py:29: ModuleNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = <test_extract_keywords.TestKeywordExtraction object at 0x7fe1bc97b250>
+
+    def test_play_keywords_include_hosts(self):
+        """Hosts is a required play keyword."""
+        from tools.extract_keywords import extract_keywords
+    
+>       keywords = extract_keywords()
+                   ^^^^^^^^^^^^^^^^^^
+
+tests/tools/test_extract_keywords.py:17: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+            from ansible.playbook.play import Play
+            from ansible.playbook.task import Task
+            from ansible.playbook.block import Block
+            from ansible.playbook.role.definition import RoleDefinition
+    
+            keywords["play"] = list(Play.fattributes.keys())
+            keywords["task"] = list(Task.fattributes.keys())
+            keywords["block"] = list(Block.fattributes.keys())
+            keywords["role"] = list(RoleDefinition.fattributes.keys())
+    
+        except ImportError as e:
+            print(f"Warning: Could not import Ansible: {e}", file=sys.stderr)
+>           keywords = _static_keyword_fallback()
+                       ^^^^^^^^^^^^^^^^^^^^^^^^
+E           NameError: name '_static_keyword_fallback' is not defined
+
+tools/extract_keywords.py:41: NameError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import Ansible: No module named 'ansible'
+____________ TestKeywordExtraction.test_task_keywords_include_name _____________
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+>           from ansible.playbook.play import Play
+E           ModuleNotFoundError: No module named 'ansible'
+
+tools/extract_keywords.py:29: ModuleNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = <test_extract_keywords.TestKeywordExtraction object at 0x7fe1bc97b610>
+
+    def test_task_keywords_include_name(self):
+        """Name is a common task keyword."""
+        from tools.extract_keywords import extract_keywords
+    
+>       keywords = extract_keywords()
+                   ^^^^^^^^^^^^^^^^^^
+
+tests/tools/test_extract_keywords.py:24: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+            from ansible.playbook.play import Play
+            from ansible.playbook.task import Task
+            from ansible.playbook.block import Block
+            from ansible.playbook.role.definition import RoleDefinition
+    
+            keywords["play"] = list(Play.fattributes.keys())
+            keywords["task"] = list(Task.fattributes.keys())
+            keywords["block"] = list(Block.fattributes.keys())
+            keywords["role"] = list(RoleDefinition.fattributes.keys())
+    
+        except ImportError as e:
+            print(f"Warning: Could not import Ansible: {e}", file=sys.stderr)
+>           keywords = _static_keyword_fallback()
+                       ^^^^^^^^^^^^^^^^^^^^^^^^
+E           NameError: name '_static_keyword_fallback' is not defined
+
+tools/extract_keywords.py:41: NameError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import Ansible: No module named 'ansible'
+__________ TestKeywordExtraction.test_task_keywords_include_register ___________
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+>           from ansible.playbook.play import Play
+E           ModuleNotFoundError: No module named 'ansible'
+
+tools/extract_keywords.py:29: ModuleNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = <test_extract_keywords.TestKeywordExtraction object at 0x7fe1bc94da70>
+
+    def test_task_keywords_include_register(self):
+        """Register is used to capture task output."""
+        from tools.extract_keywords import extract_keywords
+    
+>       keywords = extract_keywords()
+                   ^^^^^^^^^^^^^^^^^^
+
+tests/tools/test_extract_keywords.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+            from ansible.playbook.play import Play
+            from ansible.playbook.task import Task
+            from ansible.playbook.block import Block
+            from ansible.playbook.role.definition import RoleDefinition
+    
+            keywords["play"] = list(Play.fattributes.keys())
+            keywords["task"] = list(Task.fattributes.keys())
+            keywords["block"] = list(Block.fattributes.keys())
+            keywords["role"] = list(RoleDefinition.fattributes.keys())
+    
+        except ImportError as e:
+            print(f"Warning: Could not import Ansible: {e}", file=sys.stderr)
+>           keywords = _static_keyword_fallback()
+                       ^^^^^^^^^^^^^^^^^^^^^^^^
+E           NameError: name '_static_keyword_fallback' is not defined
+
+tools/extract_keywords.py:41: NameError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import Ansible: No module named 'ansible'
+____________ TestKeywordExtraction.test_task_keywords_include_when _____________
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+>           from ansible.playbook.play import Play
+E           ModuleNotFoundError: No module named 'ansible'
+
+tools/extract_keywords.py:29: ModuleNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = <test_extract_keywords.TestKeywordExtraction object at 0x7fe1bc94de00>
+
+    def test_task_keywords_include_when(self):
+        """When is the primary conditional keyword."""
+        from tools.extract_keywords import extract_keywords
+    
+>       keywords = extract_keywords()
+                   ^^^^^^^^^^^^^^^^^^
+
+tests/tools/test_extract_keywords.py:38: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+            from ansible.playbook.play import Play
+            from ansible.playbook.task import Task
+            from ansible.playbook.block import Block
+            from ansible.playbook.role.definition import RoleDefinition
+    
+            keywords["play"] = list(Play.fattributes.keys())
+            keywords["task"] = list(Task.fattributes.keys())
+            keywords["block"] = list(Block.fattributes.keys())
+            keywords["role"] = list(RoleDefinition.fattributes.keys())
+    
+        except ImportError as e:
+            print(f"Warning: Could not import Ansible: {e}", file=sys.stderr)
+>           keywords = _static_keyword_fallback()
+                       ^^^^^^^^^^^^^^^^^^^^^^^^
+E           NameError: name '_static_keyword_fallback' is not defined
+
+tools/extract_keywords.py:41: NameError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import Ansible: No module named 'ansible'
+___________ TestKeywordExtraction.test_block_keywords_include_rescue ___________
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+>           from ansible.playbook.play import Play
+E           ModuleNotFoundError: No module named 'ansible'
+
+tools/extract_keywords.py:29: ModuleNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = <test_extract_keywords.TestKeywordExtraction object at 0x7fe1bc8db0b0>
+
+    def test_block_keywords_include_rescue(self):
+        """Rescue is block-specific for error handling."""
+        from tools.extract_keywords import extract_keywords
+    
+>       keywords = extract_keywords()
+                   ^^^^^^^^^^^^^^^^^^
+
+tests/tools/test_extract_keywords.py:45: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+            from ansible.playbook.play import Play
+            from ansible.playbook.task import Task
+            from ansible.playbook.block import Block
+            from ansible.playbook.role.definition import RoleDefinition
+    
+            keywords["play"] = list(Play.fattributes.keys())
+            keywords["task"] = list(Task.fattributes.keys())
+            keywords["block"] = list(Block.fattributes.keys())
+            keywords["role"] = list(RoleDefinition.fattributes.keys())
+    
+        except ImportError as e:
+            print(f"Warning: Could not import Ansible: {e}", file=sys.stderr)
+>           keywords = _static_keyword_fallback()
+                       ^^^^^^^^^^^^^^^^^^^^^^^^
+E           NameError: name '_static_keyword_fallback' is not defined
+
+tools/extract_keywords.py:41: NameError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import Ansible: No module named 'ansible'
+___________ TestKeywordExtraction.test_block_keywords_include_always ___________
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+>           from ansible.playbook.play import Play
+E           ModuleNotFoundError: No module named 'ansible'
+
+tools/extract_keywords.py:29: ModuleNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = <test_extract_keywords.TestKeywordExtraction object at 0x7fe1bc9279b0>
+
+    def test_block_keywords_include_always(self):
+        """Always is block-specific for cleanup."""
+        from tools.extract_keywords import extract_keywords
+    
+>       keywords = extract_keywords()
+                   ^^^^^^^^^^^^^^^^^^
+
+tests/tools/test_extract_keywords.py:52: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+            from ansible.playbook.play import Play
+            from ansible.playbook.task import Task
+            from ansible.playbook.block import Block
+            from ansible.playbook.role.definition import RoleDefinition
+    
+            keywords["play"] = list(Play.fattributes.keys())
+            keywords["task"] = list(Task.fattributes.keys())
+            keywords["block"] = list(Block.fattributes.keys())
+            keywords["role"] = list(RoleDefinition.fattributes.keys())
+    
+        except ImportError as e:
+            print(f"Warning: Could not import Ansible: {e}", file=sys.stderr)
+>           keywords = _static_keyword_fallback()
+                       ^^^^^^^^^^^^^^^^^^^^^^^^
+E           NameError: name '_static_keyword_fallback' is not defined
+
+tools/extract_keywords.py:41: NameError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import Ansible: No module named 'ansible'
+________________ TestKeywordExtraction.test_role_keywords_exist ________________
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+>           from ansible.playbook.play import Play
+E           ModuleNotFoundError: No module named 'ansible'
+
+tools/extract_keywords.py:29: ModuleNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = <test_extract_keywords.TestKeywordExtraction object at 0x7fe1bc927ce0>
+
+    def test_role_keywords_exist(self):
+        """Role keywords should be extracted."""
+        from tools.extract_keywords import extract_keywords
+    
+>       keywords = extract_keywords()
+                   ^^^^^^^^^^^^^^^^^^
+
+tests/tools/test_extract_keywords.py:59: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+            from ansible.playbook.play import Play
+            from ansible.playbook.task import Task
+            from ansible.playbook.block import Block
+            from ansible.playbook.role.definition import RoleDefinition
+    
+            keywords["play"] = list(Play.fattributes.keys())
+            keywords["task"] = list(Task.fattributes.keys())
+            keywords["block"] = list(Block.fattributes.keys())
+            keywords["role"] = list(RoleDefinition.fattributes.keys())
+    
+        except ImportError as e:
+            print(f"Warning: Could not import Ansible: {e}", file=sys.stderr)
+>           keywords = _static_keyword_fallback()
+                       ^^^^^^^^^^^^^^^^^^^^^^^^
+E           NameError: name '_static_keyword_fallback' is not defined
+
+tools/extract_keywords.py:41: NameError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import Ansible: No module named 'ansible'
+___________ TestJinjaFilterExtraction.test_extracts_ansible_filters ____________
+
+self = <test_extract_keywords.TestJinjaFilterExtraction object at 0x7fe1bc97b750>
+
+    def test_extracts_ansible_filters(self):
+        """Should extract Ansible-provided filters."""
+        from tools.extract_keywords import extract_jinja_filters
+    
+        filters = extract_jinja_filters()
+        # Check for common Ansible filters
+        filter_short_names = {
+            f.get("short_name") for f in filters.values()
+        }
+>       assert "b64encode" in filter_short_names
+E       AssertionError: assert 'b64encode' in set()
+
+tests/tools/test_extract_keywords.py:75: AssertionError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import filter_loader: No module named 'ansible'
+Warning: Static filter fallback not available
+________ TestJinjaFilterExtraction.test_extracts_jinja2_builtin_filters ________
+
+self = <test_extract_keywords.TestJinjaFilterExtraction object at 0x7fe1bc97b890>
+
+    def test_extracts_jinja2_builtin_filters(self):
+        """Should include Jinja2 builtin filters."""
+        from tools.extract_keywords import extract_jinja_filters
+    
+        filters = extract_jinja_filters()
+        filter_short_names = {
+            f.get("short_name") for f in filters.values()
+        }
+        # Common Jinja2 filters
+>       assert "upper" in filter_short_names
+E       AssertionError: assert 'upper' in set()
+
+tests/tools/test_extract_keywords.py:88: AssertionError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import filter_loader: No module named 'ansible'
+Warning: Static filter fallback not available
+_____________ TestJinjaTestExtraction.test_extracts_ansible_tests ______________
+
+self = <test_extract_keywords.TestJinjaTestExtraction object at 0x7fe1bc97b9d0>
+
+    def test_extracts_ansible_tests(self):
+        """Should extract Ansible-provided tests."""
+        from tools.extract_keywords import extract_jinja_tests
+    
+        tests = extract_jinja_tests()
+        test_short_names = {t.get("short_name") for t in tests.values()}
+        # Task status tests
+>       assert "failed" in test_short_names
+E       AssertionError: assert 'failed' in set()
+
+tests/tools/test_extract_keywords.py:113: AssertionError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import test_loader: No module named 'ansible'
+Warning: Static test fallback not available
+__________ TestJinjaTestExtraction.test_extracts_jinja2_builtin_tests __________
+
+self = <test_extract_keywords.TestJinjaTestExtraction object at 0x7fe1bc97bb10>
+
+    def test_extracts_jinja2_builtin_tests(self):
+        """Should include Jinja2 builtin tests."""
+        from tools.extract_keywords import extract_jinja_tests
+    
+        tests = extract_jinja_tests()
+        test_short_names = {t.get("short_name") for t in tests.values()}
+        # Common Jinja2 tests
+>       assert "defined" in test_short_names
+E       AssertionError: assert 'defined' in set()
+
+tests/tools/test_extract_keywords.py:124: AssertionError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import test_loader: No module named 'ansible'
+Warning: Static test fallback not available
+______________ TestLookupExtraction.test_extracts_lookup_plugins _______________
+
+self = <test_extract_keywords.TestLookupExtraction object at 0x7fe1bc97bc50>
+
+    def test_extracts_lookup_plugins(self):
+        """Should extract lookup plugins."""
+        from tools.extract_keywords import extract_lookups
+    
+        lookups = extract_lookups()
+        lookup_short_names = {l.get("short_name") for l in lookups.values()}
+        # Common lookups
+>       assert "file" in lookup_short_names
+E       AssertionError: assert 'file' in set()
+
+tests/tools/test_extract_keywords.py:148: AssertionError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import lookup_loader: No module named 'ansible'
+Warning: Static lookup fallback not available
+_________________ TestLookupExtraction.test_lookup_has_options _________________
+
+self = <test_extract_keywords.TestLookupExtraction object at 0x7fe1bc97bd90>
+
+    def test_lookup_has_options(self):
+        """Lookups should include option metadata when available."""
+        from tools.extract_keywords import extract_lookups
+    
+        lookups = extract_lookups()
+        # At least some lookups should have options
+        has_options = any(
+            l.get("options") for l in lookups.values()
+        )
+>       assert has_options, "Expected some lookups to have option metadata"
+E       AssertionError: Expected some lookups to have option metadata
+E       assert False
+
+tests/tools/test_extract_keywords.py:161: AssertionError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import lookup_loader: No module named 'ansible'
+Warning: Static lookup fallback not available
+_________ TestKeywordMetadataExtraction.test_extracts_keyword_metadata _________
+
+    def extract_keyword_metadata() -> dict[str, dict[str, Any]]:
+        """Extract detailed keyword metadata (type, required, default)."""
+        metadata: dict[str, dict[str, Any]] = {}
+    
+        try:
+>           from ansible.playbook.play import Play
+E           ModuleNotFoundError: No module named 'ansible'
+
+tools/extract_keywords.py:50: ModuleNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = <test_extract_keywords.TestKeywordMetadataExtraction object at 0x7fe1bc6fc190>
+
+    def test_extracts_keyword_metadata(self):
+        """Should extract detailed keyword metadata."""
+        from tools.extract_keywords import extract_keyword_metadata
+    
+>       metadata = extract_keyword_metadata()
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/tools/test_extract_keywords.py:216: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def extract_keyword_metadata() -> dict[str, dict[str, Any]]:
+        """Extract detailed keyword metadata (type, required, default)."""
+        metadata: dict[str, dict[str, Any]] = {}
+    
+        try:
+            from ansible.playbook.play import Play
+            from ansible.playbook.task import Task
+            from ansible.playbook.block import Block
+            from ansible.playbook.role.definition import RoleDefinition
+    
+            for context, cls in [
+                ("play", Play),
+                ("task", Task),
+                ("block", Block),
+                ("role", RoleDefinition),
+            ]:
+                metadata[context] = {}
+                for name, attr in cls.fattributes.items():
+                    metadata[context][name] = {
+                        "isa": getattr(attr, "isa", None),
+                        "required": getattr(attr, "required", False),
+                        "default": _serialize_default(getattr(attr, "default", None)),
+                        "listof": getattr(attr, "listof", None),
+                        "alias": getattr(attr, "alias", None),
+                    }
+    
+        except ImportError:
+>           logging.get_logger
+            ^^^^^^^
+E           NameError: name 'logging' is not defined. Did you forget to import 'logging'?
+
+tools/extract_keywords.py:72: NameError
+___________ TestKeywordMetadataExtraction.test_metadata_includes_isa ___________
+
+    def extract_keyword_metadata() -> dict[str, dict[str, Any]]:
+        """Extract detailed keyword metadata (type, required, default)."""
+        metadata: dict[str, dict[str, Any]] = {}
+    
+        try:
+>           from ansible.playbook.play import Play
+E           ModuleNotFoundError: No module named 'ansible'
+
+tools/extract_keywords.py:50: ModuleNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = <test_extract_keywords.TestKeywordMetadataExtraction object at 0x7fe1bc6fc2d0>
+
+    def test_metadata_includes_isa(self):
+        """Keyword metadata should include type information."""
+        from tools.extract_keywords import extract_keyword_metadata
+    
+>       metadata = extract_keyword_metadata()
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/tools/test_extract_keywords.py:225: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def extract_keyword_metadata() -> dict[str, dict[str, Any]]:
+        """Extract detailed keyword metadata (type, required, default)."""
+        metadata: dict[str, dict[str, Any]] = {}
+    
+        try:
+            from ansible.playbook.play import Play
+            from ansible.playbook.task import Task
+            from ansible.playbook.block import Block
+            from ansible.playbook.role.definition import RoleDefinition
+    
+            for context, cls in [
+                ("play", Play),
+                ("task", Task),
+                ("block", Block),
+                ("role", RoleDefinition),
+            ]:
+                metadata[context] = {}
+                for name, attr in cls.fattributes.items():
+                    metadata[context][name] = {
+                        "isa": getattr(attr, "isa", None),
+                        "required": getattr(attr, "required", False),
+                        "default": _serialize_default(getattr(attr, "default", None)),
+                        "listof": getattr(attr, "listof", None),
+                        "alias": getattr(attr, "alias", None),
+                    }
+    
+        except ImportError:
+>           logging.get_logger
+            ^^^^^^^
+E           NameError: name 'logging' is not defined. Did you forget to import 'logging'?
+
+tools/extract_keywords.py:72: NameError
+________ TestKeywordMetadataExtraction.test_metadata_includes_required _________
+
+    def extract_keyword_metadata() -> dict[str, dict[str, Any]]:
+        """Extract detailed keyword metadata (type, required, default)."""
+        metadata: dict[str, dict[str, Any]] = {}
+    
+        try:
+>           from ansible.playbook.play import Play
+E           ModuleNotFoundError: No module named 'ansible'
+
+tools/extract_keywords.py:50: ModuleNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = <test_extract_keywords.TestKeywordMetadataExtraction object at 0x7fe1bc94e3f0>
+
+    def test_metadata_includes_required(self):
+        """Keyword metadata should include required flag."""
+        from tools.extract_keywords import extract_keyword_metadata
+    
+>       metadata = extract_keyword_metadata()
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/tools/test_extract_keywords.py:236: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def extract_keyword_metadata() -> dict[str, dict[str, Any]]:
+        """Extract detailed keyword metadata (type, required, default)."""
+        metadata: dict[str, dict[str, Any]] = {}
+    
+        try:
+            from ansible.playbook.play import Play
+            from ansible.playbook.task import Task
+            from ansible.playbook.block import Block
+            from ansible.playbook.role.definition import RoleDefinition
+    
+            for context, cls in [
+                ("play", Play),
+                ("task", Task),
+                ("block", Block),
+                ("role", RoleDefinition),
+            ]:
+                metadata[context] = {}
+                for name, attr in cls.fattributes.items():
+                    metadata[context][name] = {
+                        "isa": getattr(attr, "isa", None),
+                        "required": getattr(attr, "required", False),
+                        "default": _serialize_default(getattr(attr, "default", None)),
+                        "listof": getattr(attr, "listof", None),
+                        "alias": getattr(attr, "alias", None),
+                    }
+    
+        except ImportError:
+>           logging.get_logger
+            ^^^^^^^
+E           NameError: name 'logging' is not defined. Did you forget to import 'logging'?
+
+tools/extract_keywords.py:72: NameError
+________________ TestMainOutput.test_main_creates_type_modules _________________
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+>           from ansible.playbook.play import Play
+E           ModuleNotFoundError: No module named 'ansible'
+
+/home/chad/code/ansible-language-server/tools/extract_keywords.py:29: ModuleNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = <test_extract_keywords.TestMainOutput object at 0x7fe1bc6fc410>
+tmp_path = PosixPath('/tmp/pytest-of-chad/pytest-8/test_main_creates_type_modules0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fe1bc670ef0>
+
+    def test_main_creates_type_modules(self, tmp_path, monkeypatch):
+        """Main should create all type modules."""
+        from tools import extract_keywords
+    
+        # Change to temp directory for output
+        monkeypatch.chdir(tmp_path)
+    
+        # Run main
+>       extract_keywords.main()
+
+/home/chad/code/ansible-language-server/tests/tools/test_extract_keywords.py:255: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/home/chad/code/ansible-language-server/tools/extract_keywords.py:786: in main
+    "keywords": extract_keywords(),
+                ^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+            from ansible.playbook.play import Play
+            from ansible.playbook.task import Task
+            from ansible.playbook.block import Block
+            from ansible.playbook.role.definition import RoleDefinition
+    
+            keywords["play"] = list(Play.fattributes.keys())
+            keywords["task"] = list(Task.fattributes.keys())
+            keywords["block"] = list(Block.fattributes.keys())
+            keywords["role"] = list(RoleDefinition.fattributes.keys())
+    
+        except ImportError as e:
+            print(f"Warning: Could not import Ansible: {e}", file=sys.stderr)
+>           keywords = _static_keyword_fallback()
+                       ^^^^^^^^^^^^^^^^^^^^^^^^
+E           NameError: name '_static_keyword_fallback' is not defined
+
+/home/chad/code/ansible-language-server/tools/extract_keywords.py:41: NameError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import Ansible: No module named 'ansible'
+____________ TestMainOutput.test_generated_modules_are_valid_python ____________
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+>           from ansible.playbook.play import Play
+E           ModuleNotFoundError: No module named 'ansible'
+
+/home/chad/code/ansible-language-server/tools/extract_keywords.py:29: ModuleNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = <test_extract_keywords.TestMainOutput object at 0x7fe1bc6fc550>
+tmp_path = PosixPath('/tmp/pytest-of-chad/pytest-8/test_generated_modules_are_val0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fe1bc6eb350>
+
+    def test_generated_modules_are_valid_python(self, tmp_path, monkeypatch):
+        """Generated modules should be valid Python."""
+        import ast
+        from tools import extract_keywords
+    
+        monkeypatch.chdir(tmp_path)
+>       extract_keywords.main()
+
+/home/chad/code/ansible-language-server/tests/tools/test_extract_keywords.py:272: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/home/chad/code/ansible-language-server/tools/extract_keywords.py:786: in main
+    "keywords": extract_keywords(),
+                ^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+            from ansible.playbook.play import Play
+            from ansible.playbook.task import Task
+            from ansible.playbook.block import Block
+            from ansible.playbook.role.definition import RoleDefinition
+    
+            keywords["play"] = list(Play.fattributes.keys())
+            keywords["task"] = list(Task.fattributes.keys())
+            keywords["block"] = list(Block.fattributes.keys())
+            keywords["role"] = list(RoleDefinition.fattributes.keys())
+    
+        except ImportError as e:
+            print(f"Warning: Could not import Ansible: {e}", file=sys.stderr)
+>           keywords = _static_keyword_fallback()
+                       ^^^^^^^^^^^^^^^^^^^^^^^^
+E           NameError: name '_static_keyword_fallback' is not defined
+
+/home/chad/code/ansible-language-server/tools/extract_keywords.py:41: NameError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import Ansible: No module named 'ansible'
+____________ TestKeywordExtraction.test_play_keywords_include_hosts ____________
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+>           from ansible.playbook.play import Play
+E           ModuleNotFoundError: No module named 'ansible'
+
+tools/extract_schema.py:29: ModuleNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = <test_extract_schema.TestKeywordExtraction object at 0x7fe1bc6fc7d0>
+
+    def test_play_keywords_include_hosts(self):
+        """Hosts is a required play keyword."""
+        from tools.extract_schema import extract_keywords
+    
+>       keywords = extract_keywords()
+                   ^^^^^^^^^^^^^^^^^^
+
+tests/tools/test_extract_schema.py:17: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+            from ansible.playbook.play import Play
+            from ansible.playbook.task import Task
+            from ansible.playbook.block import Block
+            from ansible.playbook.role.definition import RoleDefinition
+    
+            keywords["play"] = list(Play.fattributes.keys())
+            keywords["task"] = list(Task.fattributes.keys())
+            keywords["block"] = list(Block.fattributes.keys())
+            keywords["role"] = list(RoleDefinition.fattributes.keys())
+    
+        except ImportError as e:
+            print(f"Warning: Could not import Ansible: {e}", file=sys.stderr)
+>           keywords = _static_keyword_fallback()
+                       ^^^^^^^^^^^^^^^^^^^^^^^^
+E           NameError: name '_static_keyword_fallback' is not defined
+
+tools/extract_schema.py:41: NameError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import Ansible: No module named 'ansible'
+____________ TestKeywordExtraction.test_task_keywords_include_name _____________
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+>           from ansible.playbook.play import Play
+E           ModuleNotFoundError: No module named 'ansible'
+
+tools/extract_schema.py:29: ModuleNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = <test_extract_schema.TestKeywordExtraction object at 0x7fe1bc6fc910>
+
+    def test_task_keywords_include_name(self):
+        """Name is a common task keyword."""
+        from tools.extract_schema import extract_keywords
+    
+>       keywords = extract_keywords()
+                   ^^^^^^^^^^^^^^^^^^
+
+tests/tools/test_extract_schema.py:24: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+            from ansible.playbook.play import Play
+            from ansible.playbook.task import Task
+            from ansible.playbook.block import Block
+            from ansible.playbook.role.definition import RoleDefinition
+    
+            keywords["play"] = list(Play.fattributes.keys())
+            keywords["task"] = list(Task.fattributes.keys())
+            keywords["block"] = list(Block.fattributes.keys())
+            keywords["role"] = list(RoleDefinition.fattributes.keys())
+    
+        except ImportError as e:
+            print(f"Warning: Could not import Ansible: {e}", file=sys.stderr)
+>           keywords = _static_keyword_fallback()
+                       ^^^^^^^^^^^^^^^^^^^^^^^^
+E           NameError: name '_static_keyword_fallback' is not defined
+
+tools/extract_schema.py:41: NameError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import Ansible: No module named 'ansible'
+__________ TestKeywordExtraction.test_task_keywords_include_register ___________
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+>           from ansible.playbook.play import Play
+E           ModuleNotFoundError: No module named 'ansible'
+
+tools/extract_schema.py:29: ModuleNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = <test_extract_schema.TestKeywordExtraction object at 0x7fe1bc94e8b0>
+
+    def test_task_keywords_include_register(self):
+        """Register is used to capture task output."""
+        from tools.extract_schema import extract_keywords
+    
+>       keywords = extract_keywords()
+                   ^^^^^^^^^^^^^^^^^^
+
+tests/tools/test_extract_schema.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+            from ansible.playbook.play import Play
+            from ansible.playbook.task import Task
+            from ansible.playbook.block import Block
+            from ansible.playbook.role.definition import RoleDefinition
+    
+            keywords["play"] = list(Play.fattributes.keys())
+            keywords["task"] = list(Task.fattributes.keys())
+            keywords["block"] = list(Block.fattributes.keys())
+            keywords["role"] = list(RoleDefinition.fattributes.keys())
+    
+        except ImportError as e:
+            print(f"Warning: Could not import Ansible: {e}", file=sys.stderr)
+>           keywords = _static_keyword_fallback()
+                       ^^^^^^^^^^^^^^^^^^^^^^^^
+E           NameError: name '_static_keyword_fallback' is not defined
+
+tools/extract_schema.py:41: NameError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import Ansible: No module named 'ansible'
+____________ TestKeywordExtraction.test_task_keywords_include_when _____________
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+>           from ansible.playbook.play import Play
+E           ModuleNotFoundError: No module named 'ansible'
+
+tools/extract_schema.py:29: ModuleNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = <test_extract_schema.TestKeywordExtraction object at 0x7fe1bc94e9e0>
+
+    def test_task_keywords_include_when(self):
+        """When is the primary conditional keyword."""
+        from tools.extract_schema import extract_keywords
+    
+>       keywords = extract_keywords()
+                   ^^^^^^^^^^^^^^^^^^
+
+tests/tools/test_extract_schema.py:38: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+            from ansible.playbook.play import Play
+            from ansible.playbook.task import Task
+            from ansible.playbook.block import Block
+            from ansible.playbook.role.definition import RoleDefinition
+    
+            keywords["play"] = list(Play.fattributes.keys())
+            keywords["task"] = list(Task.fattributes.keys())
+            keywords["block"] = list(Block.fattributes.keys())
+            keywords["role"] = list(RoleDefinition.fattributes.keys())
+    
+        except ImportError as e:
+            print(f"Warning: Could not import Ansible: {e}", file=sys.stderr)
+>           keywords = _static_keyword_fallback()
+                       ^^^^^^^^^^^^^^^^^^^^^^^^
+E           NameError: name '_static_keyword_fallback' is not defined
+
+tools/extract_schema.py:41: NameError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import Ansible: No module named 'ansible'
+___________ TestKeywordExtraction.test_block_keywords_include_rescue ___________
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+>           from ansible.playbook.play import Play
+E           ModuleNotFoundError: No module named 'ansible'
+
+tools/extract_schema.py:29: ModuleNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = <test_extract_schema.TestKeywordExtraction object at 0x7fe1bc8db890>
+
+    def test_block_keywords_include_rescue(self):
+        """Rescue is block-specific for error handling."""
+        from tools.extract_schema import extract_keywords
+    
+>       keywords = extract_keywords()
+                   ^^^^^^^^^^^^^^^^^^
+
+tests/tools/test_extract_schema.py:45: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+            from ansible.playbook.play import Play
+            from ansible.playbook.task import Task
+            from ansible.playbook.block import Block
+            from ansible.playbook.role.definition import RoleDefinition
+    
+            keywords["play"] = list(Play.fattributes.keys())
+            keywords["task"] = list(Task.fattributes.keys())
+            keywords["block"] = list(Block.fattributes.keys())
+            keywords["role"] = list(RoleDefinition.fattributes.keys())
+    
+        except ImportError as e:
+            print(f"Warning: Could not import Ansible: {e}", file=sys.stderr)
+>           keywords = _static_keyword_fallback()
+                       ^^^^^^^^^^^^^^^^^^^^^^^^
+E           NameError: name '_static_keyword_fallback' is not defined
+
+tools/extract_schema.py:41: NameError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import Ansible: No module named 'ansible'
+___________ TestKeywordExtraction.test_block_keywords_include_always ___________
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+>           from ansible.playbook.play import Play
+E           ModuleNotFoundError: No module named 'ansible'
+
+tools/extract_schema.py:29: ModuleNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = <test_extract_schema.TestKeywordExtraction object at 0x7fe1bc6e8380>
+
+    def test_block_keywords_include_always(self):
+        """Always is block-specific for cleanup."""
+        from tools.extract_schema import extract_keywords
+    
+>       keywords = extract_keywords()
+                   ^^^^^^^^^^^^^^^^^^
+
+tests/tools/test_extract_schema.py:52: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+            from ansible.playbook.play import Play
+            from ansible.playbook.task import Task
+            from ansible.playbook.block import Block
+            from ansible.playbook.role.definition import RoleDefinition
+    
+            keywords["play"] = list(Play.fattributes.keys())
+            keywords["task"] = list(Task.fattributes.keys())
+            keywords["block"] = list(Block.fattributes.keys())
+            keywords["role"] = list(RoleDefinition.fattributes.keys())
+    
+        except ImportError as e:
+            print(f"Warning: Could not import Ansible: {e}", file=sys.stderr)
+>           keywords = _static_keyword_fallback()
+                       ^^^^^^^^^^^^^^^^^^^^^^^^
+E           NameError: name '_static_keyword_fallback' is not defined
+
+tools/extract_schema.py:41: NameError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import Ansible: No module named 'ansible'
+________________ TestKeywordExtraction.test_role_keywords_exist ________________
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+>           from ansible.playbook.play import Play
+E           ModuleNotFoundError: No module named 'ansible'
+
+tools/extract_schema.py:29: ModuleNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = <test_extract_schema.TestKeywordExtraction object at 0x7fe1bc6e8490>
+
+    def test_role_keywords_exist(self):
+        """Role keywords should be extracted."""
+        from tools.extract_schema import extract_keywords
+    
+>       keywords = extract_keywords()
+                   ^^^^^^^^^^^^^^^^^^
+
+tests/tools/test_extract_schema.py:59: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def extract_keywords() -> dict[str, list[str]]:
+        """Extract keywords from Ansible playbook classes via fattributes."""
+        keywords: dict[str, list[str]] = {
+            "play": [],
+            "task": [],
+            "block": [],
+            "role": [],
+        }
+    
+        try:
+            from ansible.playbook.play import Play
+            from ansible.playbook.task import Task
+            from ansible.playbook.block import Block
+            from ansible.playbook.role.definition import RoleDefinition
+    
+            keywords["play"] = list(Play.fattributes.keys())
+            keywords["task"] = list(Task.fattributes.keys())
+            keywords["block"] = list(Block.fattributes.keys())
+            keywords["role"] = list(RoleDefinition.fattributes.keys())
+    
+        except ImportError as e:
+            print(f"Warning: Could not import Ansible: {e}", file=sys.stderr)
+>           keywords = _static_keyword_fallback()
+                       ^^^^^^^^^^^^^^^^^^^^^^^^
+E           NameError: name '_static_keyword_fallback' is not defined
+
+tools/extract_schema.py:41: NameError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import Ansible: No module named 'ansible'
+___________ TestJinjaFilterExtraction.test_extracts_ansible_filters ____________
+
+self = <test_extract_schema.TestJinjaFilterExtraction object at 0x7fe1bc6fcb90>
+
+    def test_extracts_ansible_filters(self):
+        """Should extract Ansible-provided filters."""
+        from tools.extract_schema import extract_jinja_filters
+    
+        filters = extract_jinja_filters()
+        # Check for common Ansible filters
+        filter_short_names = {
+            f.get("short_name") for f in filters.values()
+        }
+>       assert "b64encode" in filter_short_names
+E       AssertionError: assert 'b64encode' in set()
+
+tests/tools/test_extract_schema.py:75: AssertionError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import filter_loader: No module named 'ansible'
+________ TestJinjaFilterExtraction.test_extracts_jinja2_builtin_filters ________
+
+self = <test_extract_schema.TestJinjaFilterExtraction object at 0x7fe1bc6fccd0>
+
+    def test_extracts_jinja2_builtin_filters(self):
+        """Should include Jinja2 builtin filters."""
+        from tools.extract_schema import extract_jinja_filters
+    
+        filters = extract_jinja_filters()
+        filter_short_names = {
+            f.get("short_name") for f in filters.values()
+        }
+        # Common Jinja2 filters
+>       assert "upper" in filter_short_names
+E       AssertionError: assert 'upper' in set()
+
+tests/tools/test_extract_schema.py:88: AssertionError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import filter_loader: No module named 'ansible'
+_____________ TestJinjaTestExtraction.test_extracts_ansible_tests ______________
+
+self = <test_extract_schema.TestJinjaTestExtraction object at 0x7fe1bc6fca50>
+
+    def test_extracts_ansible_tests(self):
+        """Should extract Ansible-provided tests."""
+        from tools.extract_schema import extract_jinja_tests
+    
+        tests = extract_jinja_tests()
+        test_short_names = {t.get("short_name") for t in tests.values()}
+        # Task status tests
+>       assert "failed" in test_short_names
+E       AssertionError: assert 'failed' in set()
+
+tests/tools/test_extract_schema.py:113: AssertionError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import test_loader: No module named 'ansible'
+__________ TestJinjaTestExtraction.test_extracts_jinja2_builtin_tests __________
+
+self = <test_extract_schema.TestJinjaTestExtraction object at 0x7fe1bc6fce10>
+
+    def test_extracts_jinja2_builtin_tests(self):
+        """Should include Jinja2 builtin tests."""
+        from tools.extract_schema import extract_jinja_tests
+    
+        tests = extract_jinja_tests()
+        test_short_names = {t.get("short_name") for t in tests.values()}
+        # Common Jinja2 tests
+>       assert "defined" in test_short_names
+E       AssertionError: assert 'defined' in set()
+
+tests/tools/test_extract_schema.py:124: AssertionError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import test_loader: No module named 'ansible'
+______________ TestLookupExtraction.test_extracts_lookup_plugins _______________
+
+self = <test_extract_schema.TestLookupExtraction object at 0x7fe1bc6fcf50>
+
+    def test_extracts_lookup_plugins(self):
+        """Should extract lookup plugins."""
+        from tools.extract_schema import extract_lookups
+    
+>       lookups = extract_lookups()
+                  ^^^^^^^^^^^^^^^^^
+
+tests/tools/test_extract_schema.py:145: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def extract_lookups() -> dict[str, dict[str, Any]]:
+        """Extract lookup plugins with their option metadata."""
+        lookups: dict[str, dict[str, Any]] = {}
+    
+    
+>       from ansible.plugins.loader import lookup_loader
+E       ModuleNotFoundError: No module named 'ansible'
+
+tools/extract_schema.py:176: ModuleNotFoundError
+_________________ TestLookupExtraction.test_lookup_has_options _________________
+
+self = <test_extract_schema.TestLookupExtraction object at 0x7fe1bc6fd090>
+
+    def test_lookup_has_options(self):
+        """Lookups should include option metadata when available."""
+        from tools.extract_schema import extract_lookups
+    
+>       lookups = extract_lookups()
+                  ^^^^^^^^^^^^^^^^^
+
+tests/tools/test_extract_schema.py:156: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def extract_lookups() -> dict[str, dict[str, Any]]:
+        """Extract lookup plugins with their option metadata."""
+        lookups: dict[str, dict[str, Any]] = {}
+    
+    
+>       from ansible.plugins.loader import lookup_loader
+E       ModuleNotFoundError: No module named 'ansible'
+
+tools/extract_schema.py:176: ModuleNotFoundError
+______________ TestLookupExtraction.test_lookup_option_structure _______________
+
+self = <test_extract_schema.TestLookupExtraction object at 0x7fe1bc94ed70>
+
+    def test_lookup_option_structure(self):
+        """Lookup options should have consistent structure."""
+        from tools.extract_schema import extract_lookups
+    
+>       lookups = extract_lookups()
+                  ^^^^^^^^^^^^^^^^^
+
+tests/tools/test_extract_schema.py:167: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def extract_lookups() -> dict[str, dict[str, Any]]:
+        """Extract lookup plugins with their option metadata."""
+        lookups: dict[str, dict[str, Any]] = {}
+    
+    
+>       from ansible.plugins.loader import lookup_loader
+E       ModuleNotFoundError: No module named 'ansible'
+
+tools/extract_schema.py:176: ModuleNotFoundError
+________________ TestMainOutput.test_main_creates_type_modules _________________
+
+self = <test_extract_schema.TestMainOutput object at 0x7fe1bc6fd6d0>
+tmp_path = PosixPath('/tmp/pytest-of-chad/pytest-8/test_main_creates_type_modules1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fe1bc6ea9c0>
+
+    def test_main_creates_type_modules(self, tmp_path, monkeypatch):
+        """Main should create all type modules."""
+        from tools import extract_schema
+    
+        # Change to temp directory for output
+        monkeypatch.chdir(tmp_path)
+    
+        # Run main
+>       extract_schema.main()
+
+/home/chad/code/ansible-language-server/tests/tools/test_extract_schema.py:255: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/home/chad/code/ansible-language-server/tools/extract_schema.py:431: in main
+    "lookups": extract_lookups(),
+               ^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def extract_lookups() -> dict[str, dict[str, Any]]:
+        """Extract lookup plugins with their option metadata."""
+        lookups: dict[str, dict[str, Any]] = {}
+    
+    
+>       from ansible.plugins.loader import lookup_loader
+E       ModuleNotFoundError: No module named 'ansible'
+
+/home/chad/code/ansible-language-server/tools/extract_schema.py:176: ModuleNotFoundError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import filter_loader: No module named 'ansible'
+Warning: Could not import test_loader: No module named 'ansible'
+____________ TestMainOutput.test_generated_modules_are_valid_python ____________
+
+self = <test_extract_schema.TestMainOutput object at 0x7fe1bc6fd810>
+tmp_path = PosixPath('/tmp/pytest-of-chad/pytest-8/test_generated_modules_are_val1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fe1bc731e50>
+
+    def test_generated_modules_are_valid_python(self, tmp_path, monkeypatch):
+        """Generated modules should be valid Python."""
+        import ast
+        from tools import extract_schema
+    
+        monkeypatch.chdir(tmp_path)
+>       extract_schema.main()
+
+/home/chad/code/ansible-language-server/tests/tools/test_extract_schema.py:272: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/home/chad/code/ansible-language-server/tools/extract_schema.py:431: in main
+    "lookups": extract_lookups(),
+               ^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def extract_lookups() -> dict[str, dict[str, Any]]:
+        """Extract lookup plugins with their option metadata."""
+        lookups: dict[str, dict[str, Any]] = {}
+    
+    
+>       from ansible.plugins.loader import lookup_loader
+E       ModuleNotFoundError: No module named 'ansible'
+
+/home/chad/code/ansible-language-server/tools/extract_schema.py:176: ModuleNotFoundError
+----------------------------- Captured stderr call -----------------------------
+Warning: Could not import filter_loader: No module named 'ansible'
+Warning: Could not import test_loader: No module named 'ansible'
+=========================== short test summary info ============================
+FAILED tests/services/ansible_parser/test_ansible_parser.py::TestAnsibleParsing::test_parse_simple_ansible
+FAILED tests/services/ansible_parser/test_ansible_parser.py::TestAnsibleParsing::test_parse_playbook
+FAILED tests/services/ansible_parser/test_ansible_parser.py::TestAnsibleParsing::test_get_node_at_position
+FAILED tests/tools/test_extract_keywords.py::TestKeywordExtraction::test_play_keywords_include_hosts
+FAILED tests/tools/test_extract_keywords.py::TestKeywordExtraction::test_task_keywords_include_name
+FAILED tests/tools/test_extract_keywords.py::TestKeywordExtraction::test_task_keywords_include_register
+FAILED tests/tools/test_extract_keywords.py::TestKeywordExtraction::test_task_keywords_include_when
+FAILED tests/tools/test_extract_keywords.py::TestKeywordExtraction::test_block_keywords_include_rescue
+FAILED tests/tools/test_extract_keywords.py::TestKeywordExtraction::test_block_keywords_include_always
+FAILED tests/tools/test_extract_keywords.py::TestKeywordExtraction::test_role_keywords_exist
+FAILED tests/tools/test_extract_keywords.py::TestJinjaFilterExtraction::test_extracts_ansible_filters
+FAILED tests/tools/test_extract_keywords.py::TestJinjaFilterExtraction::test_extracts_jinja2_builtin_filters
+FAILED tests/tools/test_extract_keywords.py::TestJinjaTestExtraction::test_extracts_ansible_tests
+FAILED tests/tools/test_extract_keywords.py::TestJinjaTestExtraction::test_extracts_jinja2_builtin_tests
+FAILED tests/tools/test_extract_keywords.py::TestLookupExtraction::test_extracts_lookup_plugins
+FAILED tests/tools/test_extract_keywords.py::TestLookupExtraction::test_lookup_has_options
+FAILED tests/tools/test_extract_keywords.py::TestKeywordMetadataExtraction::test_extracts_keyword_metadata
+FAILED tests/tools/test_extract_keywords.py::TestKeywordMetadataExtraction::test_metadata_includes_isa
+FAILED tests/tools/test_extract_keywords.py::TestKeywordMetadataExtraction::test_metadata_includes_required
+FAILED tests/tools/test_extract_keywords.py::TestMainOutput::test_main_creates_type_modules
+FAILED tests/tools/test_extract_keywords.py::TestMainOutput::test_generated_modules_are_valid_python
+FAILED tests/tools/test_extract_schema.py::TestKeywordExtraction::test_play_keywords_include_hosts
+FAILED tests/tools/test_extract_schema.py::TestKeywordExtraction::test_task_keywords_include_name
+FAILED tests/tools/test_extract_schema.py::TestKeywordExtraction::test_task_keywords_include_register
+FAILED tests/tools/test_extract_schema.py::TestKeywordExtraction::test_task_keywords_include_when
+FAILED tests/tools/test_extract_schema.py::TestKeywordExtraction::test_block_keywords_include_rescue
+FAILED tests/tools/test_extract_schema.py::TestKeywordExtraction::test_block_keywords_include_always
+FAILED tests/tools/test_extract_schema.py::TestKeywordExtraction::test_role_keywords_exist
+FAILED tests/tools/test_extract_schema.py::TestJinjaFilterExtraction::test_extracts_ansible_filters
+FAILED tests/tools/test_extract_schema.py::TestJinjaFilterExtraction::test_extracts_jinja2_builtin_filters
+FAILED tests/tools/test_extract_schema.py::TestJinjaTestExtraction::test_extracts_ansible_tests
+FAILED tests/tools/test_extract_schema.py::TestJinjaTestExtraction::test_extracts_jinja2_builtin_tests
+FAILED tests/tools/test_extract_schema.py::TestLookupExtraction::test_extracts_lookup_plugins
+FAILED tests/tools/test_extract_schema.py::TestLookupExtraction::test_lookup_has_options
+FAILED tests/tools/test_extract_schema.py::TestLookupExtraction::test_lookup_option_structure
+FAILED tests/tools/test_extract_schema.py::TestMainOutput::test_main_creates_type_modules
+FAILED tests/tools/test_extract_schema.py::TestMainOutput::test_generated_modules_are_valid_python
+=================== 37 failed, 18 passed, 6 skipped in 0.42s ===================
+#+end_example
+
+** TODO multiple yaml grammars
+  [2026-02-03 Tue]
+  [[id:5a3be352-f776-4bc1-b080-e6c0651cfffd][Why tree-sitter]]
+  https://github.com/cathaysia/tree-sitter-jinja/releases/tag/v0.11.1 is more recent and I'll start here. It doesn't appear to be on pipi.
+
+  https://github.com/dbt-labs/tree-sitter-jinja2/releases/tag/v0.1.0 was last released in '21 but is owned by a shop.. Ugh, it's not installing cuz it was made from an old tree-sitter.
+
+
+
+  I found a third one on pypi but it's not published on github, and the homepage is broken. Super sus.
+
+  But I installed it at tree_sitter_jinja.
