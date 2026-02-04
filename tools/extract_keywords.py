@@ -16,7 +16,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 def extract_keywords() -> dict[str, list[str]]:
     """Extract keywords from Ansible playbook classes via fattributes."""
     keywords: dict[str, list[str]] = {
@@ -42,7 +41,6 @@ def extract_keywords() -> dict[str, list[str]]:
         keywords = _static_keyword_fallback()
 
     return keywords
-
 
 def extract_keyword_metadata() -> dict[str, dict[str, Any]]:
     """Extract detailed keyword metadata (type, required, default)."""
@@ -74,7 +72,6 @@ def extract_keyword_metadata() -> dict[str, dict[str, Any]]:
         logging.get_logger
 
     return metadata
-
 
 def extract_jinja_filters() -> dict[str, dict[str, Any]]:
     """Extract Jinja2 filters from Ansible and builtin Jinja2."""
@@ -139,7 +136,6 @@ def extract_jinja_filters() -> dict[str, dict[str, Any]]:
 
     return filters
 
-
 def extract_jinja_tests() -> dict[str, dict[str, Any]]:
     """Extract Jinja2 tests from Ansible and builtin Jinja2."""
     tests: dict[str, dict[str, Any]] = {}
@@ -201,7 +197,6 @@ def extract_jinja_tests() -> dict[str, dict[str, Any]]:
 
     return tests
 
-
 def extract_lookups() -> dict[str, dict[str, Any]]:
     """Extract lookup plugins with their option metadata."""
     lookups: dict[str, dict[str, Any]] = {}
@@ -251,7 +246,6 @@ def extract_lookups() -> dict[str, dict[str, Any]]:
             print("Warning: Static lookup fallback not available", file=sys.stderr)
 
     return lookups
-
 
 def extract_magic_variables() -> dict[str, dict[str, str]]:
     """Return documented magic variables (these are hardcoded, not from API)."""
@@ -405,7 +399,6 @@ def extract_magic_variables() -> dict[str, dict[str, str]]:
         },
     }
 
-
 def extract_callback_plugins() -> dict[str, dict[str, Any]]:
     """Extract callback plugin names (for advanced grammar support)."""
     callbacks: dict[str, dict[str, Any]] = {}
@@ -427,7 +420,6 @@ def extract_callback_plugins() -> dict[str, dict[str, Any]]:
 
     return callbacks
 
-
 def _serialize_default(value: Any) -> Any:
     """Serialize default values to JSON-safe types."""
     if value is None:
@@ -441,7 +433,6 @@ def _serialize_default(value: Any) -> Any:
     if isinstance(value, dict):
         return {k: _serialize_default(v) for k, v in value.items()}
     return repr(value)
-
 
 def main() -> None:
     """Extract all Ansible metadata and output as JSON."""

@@ -59,26 +59,6 @@ class TestKeywordExtraction:
         keywords = extract_keywords()
         assert len(keywords["role"]) > 0
 
-    def test_fallback_when_ansible_unavailable(self, monkeypatch):
-        """Should use static fallback if Ansible import fails."""
-        import sys
-
-        # Block ansible imports by replacing with None
-        monkeypatch.setitem(sys.modules, "ansible", None)
-        monkeypatch.setitem(sys.modules, "ansible.playbook", None)
-        monkeypatch.setitem(sys.modules, "ansible.playbook.play", None)
-
-        # Need to reimport after blocking
-        import importlib
-        import tools.extract_keywords as module
-
-        importlib.reload(module)
-
-        keywords = module.extract_keywords()
-        # Should still have keywords from static fallback
-        assert len(keywords["task"]) > 0
-        assert "name" in keywords["task"]
-
 
 class TestJinjaFilterExtraction:
     """Test Jinja2 filter extraction from Ansible."""

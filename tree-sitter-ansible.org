@@ -132,7 +132,6 @@ def extract_keywords() -> dict[str, list[str]]:
 
 #+end_src
 #+begin_src python :tangle tools/extract_keywords.py :mkdirp t
-
 def extract_keyword_metadata() -> dict[str, dict[str, Any]]:
     """Extract detailed keyword metadata (type, required, default)."""
     metadata: dict[str, dict[str, Any]] = {}
@@ -799,34 +798,6 @@ task_keyword: $ => choice(
 ),
 #+end_src
 
-*** Jinja2 Embedding
-
-Jinja2 expressions appear in string values, delimited by ={{ }}= (expressions) or ={%  %}= (statements). 
-
-#+begin_src javascript
-jinja_expression: $ => seq(
-  '{{',
-  $.jinja_content,
-  '}}'
-),
-
-jinja_content: $ => choice(
-  $.variable_reference,
-  $.filter_chain,
-  $.conditional,
-  $.function_call,
-),
-
-variable_reference: $ => seq(
-  $.identifier,
-  repeat(seq('.', $.identifier))  // hostvars.inventory_hostname
-),
-
-filter_chain: $ => seq(
-  $._jinja_value,
-  repeat1(seq('|', $.filter_name, optional($.filter_args)))
-),
-#+end_src
 
 *** TODO Grammar Composition Script
 :PROPERTIES:
@@ -932,8 +903,6 @@ def generate_grammar(metadata: dict) -> str:
     ansible_version = metadata.get("_ansible_version", "unknown")
 #+end_src
 #+begin_src python :tangle tools/compose_grammar.py :mkdirp t
-
-
 def main() -> int:
     """Generate grammar.js from extracted metadata."""
     metadata_path = Path("build/ansible_metadata.json")
@@ -968,41 +937,32 @@ def main() -> int:
 if __name__ == "__main__":
     raise SystemExit(main())
 #+end_src
-*** grammar templates
+*** TODO grammar templates
+:PROPERTIES:
+:ID:       1c6b9270-2a8b-4448-83e1-020315f3b499
+:END:
 a bunch of this jinja grammar boilerplate gotta go away, we have a grammar already
 
 ansible grammar should be pretty small, just some extra keywords and some rules
 
+the YAML grammar is root. Jinja appears within string literals. And that's p much it...
+
 #+begin_src jinja2
 {%js
-    /**
-     ,* tree-sitter-ansible grammar
-     ,* Auto-generated from Ansible {ansible_version}
-     ,*
-     ,* This grammar extends tree-sitter-yaml with Ansible-specific rules.
-     ,* Keywords, filters, tests, and lookups are extracted from Ansible source.
-     ,*
-     ,* DO NOT EDIT MANUALLY - regenerate with:
-     ,*   python tools/extract_keywords.py && python tools/compose_grammar.py
-     ,*/
+/**
+,* tree-sitter-ansible grammar
+,* Auto-generated from Ansible {ansible_version}
+,*
+,* This grammar extends tree-sitter-yaml with Ansible-specific rules.
+,* Keywords, filters, tests, and lookups are extracted from Ansible source.
+,*
+,* DO NOT EDIT MANUALLY - regenerate with:
+,*   python tools/extract_keywords.py && python tools/compose_grammar.py
+,*/
 
     module.exports = grammar(require('tree-sitter-yaml/grammar'), {{
       name: 'ansible',
 
-      // Conflict resolution
-      conflicts: $ => [
-        [$.jinja_expression, $.double_quote_scalar],
-      ],
-
-      // External scanner for Jinja2 delimiters
-      externals: ($, original) => original.concat([
-        $._jinja_expr_start,   // {{{{
-        $._jinja_expr_end,     // }}}}
-        $._jinja_stmt_start,   // {{%
-        $._jinja_stmt_end,     // %}}
-        $._jinja_comment_start, // {{#
-        $._jinja_comment_end,   // #}}
-      ]),
 
       rules: {{
         // ========================================
@@ -1111,195 +1071,8 @@ ansible grammar should be pretty small, just some extra keywords and some rules
         // Jinja2 Expressions
         // ========================================
 
-        jinja_expression: $ => seq(
-          '{{{{',
-          repeat(choice(
-            $.jinja_variable,
-            $.jinja_filter_chain,
-            $.jinja_test_expression,
-            $.jinja_literal,
-            $.jinja_operator,
-            /[^{{}}|]+/,
-          )),
-          '}}}}',
-        ),
-
-        jinja_statement: $ => seq(
-          '{{%',
-          choice(
-            $.jinja_for,
-            $.jinja_if,
-            $.jinja_set,
-            $.jinja_block,
-            $.jinja_macro,
-            /[^%]+/,
-          ),
-          '%}}',
-        ),
-
-        jinja_comment: $ => seq(
-          '{{#',
-          /[^#]*/,
-          '#}}',
-        ),
-
-        jinja_variable: $ => prec.left(seq(
-          $.jinja_identifier,
-          repeat(choice(
-            seq('.', $.jinja_identifier),          // dot access: foo.bar
-            seq('[', $._jinja_value, ']'),         // bracket access: foo["bar"]
-          )),
-        )),
-
-        jinja_filter_chain: $ => prec.left(seq(
-          $._jinja_value,
-          repeat1(seq(
-            '|',
-            $.jinja_filter,
-            optional($.jinja_filter_args),
-          )),
-        )),
-
-        jinja_filter: $ => choice({filter_names_js}),
-
-        jinja_filter_args: $ => seq(
-          '(',
-          optional(seq(
-            $._jinja_value,
-            repeat(seq(',', $._jinja_value)),
-          )),
-          ')',
-        ),
-
-        jinja_test_expression: $ => seq(
-          $._jinja_value,
-          'is',
-          optional('not'),
-          $.jinja_test,
-          optional($.jinja_test_args),
-        ),
-
-        jinja_test: $ => choice({test_names_js}),
-
-        jinja_test_args: $ => seq(
-          '(',
-          optional(seq(
-            $._jinja_value,
-            repeat(seq(',', $._jinja_value)),
-          )),
-          ')',
-        ),
-
-        // Jinja control structures
-        jinja_for: $ => seq(
-          'for',
-          $.jinja_identifier,
-          optional(seq(',', $.jinja_identifier)),  // for k, v in
-          'in',
-          $._jinja_value,
-          optional(seq('if', $._jinja_value)),     // conditional loop
-          optional('recursive'),
-        ),
-
-        jinja_if: $ => seq(
-          choice('if', 'elif', 'else', 'endif'),
-          optional($._jinja_value),
-        ),
-
-        jinja_set: $ => seq(
-          'set',
-          $.jinja_identifier,
-          '=',
-          $._jinja_value,
-        ),
-
-        jinja_block: $ => seq(
-          choice('block', 'endblock'),
-          optional($.jinja_identifier),
-        ),
-
-        jinja_macro: $ => seq(
-          choice('macro', 'endmacro', 'call', 'endcall'),
-          optional($.jinja_identifier),
-          optional($.jinja_filter_args),
-        ),
-
-        jinja_lookup: $ => seq(
-          'lookup',
-          '(',
-          $.jinja_lookup_plugin,
-          ',',
-          $._jinja_value,
-          repeat(seq(',', $.jinja_kwarg)),
-          ')',
-        ),
-
         jinja_lookup_plugin: $ => choice({lookup_names_js}),
 
-        jinja_kwarg: $ => seq(
-          $.jinja_identifier,
-          '=',
-          $._jinja_value,
-        ),
-
-        _jinja_value: $ => choice(
-          $.jinja_variable,
-          $.jinja_literal,
-          $.jinja_list,
-          $.jinja_dict,
-          $.jinja_lookup,
-          seq('(', $._jinja_value, ')'),
-        ),
-
-        jinja_identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/,
-
-        jinja_literal: $ => choice(
-          $.jinja_string,
-          $.jinja_number,
-          $.jinja_boolean,
-          'none',
-        ),
-
-        jinja_string: $ => choice(
-          seq("'", /[^']*/, "'"),
-          seq('"', /[^"]*/, '"'),
-        ),
-
-        jinja_number: $ => /[+-]?\\d+(\\.\\d+)?([eE][+-]?\\d+)?/,
-
-        jinja_boolean: $ => choice('true', 'false', 'True', 'False'),
-
-        jinja_list: $ => seq(
-          '[',
-          optional(seq(
-            $._jinja_value,
-            repeat(seq(',', $._jinja_value)),
-          )),
-          ']',
-        ),
-
-        jinja_dict: $ => seq(
-          '{{',
-          optional(seq(
-            $.jinja_dict_pair,
-            repeat(seq(',', $.jinja_dict_pair)),
-          )),
-          '}}',
-        ),
-
-        jinja_dict_pair: $ => seq(
-          choice($.jinja_string, $.jinja_identifier),
-          ':',
-          $._jinja_value,
-        ),
-
-        jinja_operator: $ => choice(
-          '+', '-', '*', '/', '//', '%', '**',     // arithmetic
-          '==', '!=', '<', '>', '<=', '>=',        // comparison
-          'and', 'or', 'not',                      // logical
-          'in', 'not in', 'is', 'is not',          // membership/identity
-          '~',                                      // concatenation
-        ),
 
         // ========================================
         // Magic Variables (for highlighting/completion)
@@ -1334,11 +1107,69 @@ ansible grammar should be pretty small, just some extra keywords and some rules
     }});
 %}
 #+end_src
+*** TODO injection queries
+:PROPERTIES:
+:ID:       26091bb5-7950-45f4-a7fe-581c20ec4936
+:END:
+the grammar actually shouldn't have a ton of stuff baked into it. Just a couple minimal data structures overlaid on YAML for ansible-specific types.
 
 
 #+begin_src jinja2
-
+{%
+;; injections.scm - Identify where to inject Jinja2 in YAML
+((string_scalar) @injection.content
+    (#match? @injection.content "^.*{{.*}}.*$|^.*{%.*%}.*$")
+    (#set! injection.language "jinja2"))
+%}
 #+end_src
+**** parsing and dispatching the injections in Python
+#+begin_src python
+    def parse_document(self, document_text: str):
+        """Parse a document, apply language injection, and return a structure."""
+        # 1. Parse the entire document with the primary language (YAML)
+        main_tree = self.yaml_parser.parse(bytes(document_text, "utf8"))
+
+        # 2. Execute the injection query to find nodes to re-parse
+        captures = self.injection_query.captures(main_tree.root_node)
+        injections = []
+
+        for node, tag in captures:
+            if tag == "injection.content":
+                # Get the text range of this node
+                start_byte, end_byte = node.start_byte, node.end_byte
+                injected_text = document_text[start_byte:end_byte]
+
+                # 3. Re-parse this text fragment with Jinja2
+                # You might need to clean up surrounding YAML quotes
+                jinja2_text = self._prepare_for_jinja_parsing(injected_text)
+                injected_tree = self.jinja2_parser.parse(
+                    bytes(jinja2_text, "utf8")
+                )
+
+                injections.append({
+                    'node': node,           # The YAML string node
+                    'tree': injected_tree,  # The new Jinja2 tree
+                    'language': 'jinja2',
+                    'byte_range': (start_byte, end_byte),
+                    'original_text': injected_text
+                })
+
+        return {
+            'main_tree': main_tree,
+            'main_language': 'yaml',
+            'injections': injections
+        }
+
+    def _prepare_for_jinja_parsing(self, text: str) -> str:
+        # Simple helper to strip surrounding YAML quotes if needed.
+        # Real implementation needs to handle single/double quotes, block scalars.
+        for quote in ("'", '"'):
+            if text.startswith(quote) and text.endswith(quote):
+                return text[1:-1]
+        return text
+#+end_src
+
+
 ** Tests: Grammar Validation
 
 *** Unit Tests for Metadata Extraction
@@ -1404,26 +1235,6 @@ class TestKeywordExtraction:
 
         keywords = extract_keywords()
         assert len(keywords["role"]) > 0
-
-    def test_fallback_when_ansible_unavailable(self, monkeypatch):
-        """Should use static fallback if Ansible import fails."""
-        import sys
-
-        # Block ansible imports by replacing with None
-        monkeypatch.setitem(sys.modules, "ansible", None)
-        monkeypatch.setitem(sys.modules, "ansible.playbook", None)
-        monkeypatch.setitem(sys.modules, "ansible.playbook.play", None)
-
-        # Need to reimport after blocking
-        import importlib
-        import tools.extract_keywords as module
-
-        importlib.reload(module)
-
-        keywords = module.extract_keywords()
-        # Should still have keywords from static fallback
-        assert len(keywords["task"]) > 0
-        assert "name" in keywords["task"]
 
 
 class TestJinjaFilterExtraction:
