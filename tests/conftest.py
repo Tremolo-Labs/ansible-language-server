@@ -95,18 +95,6 @@ def make_text_document():
     return _make_doc
 
 
-def is_windows() -> bool:
-    """Check if running on Windows."""
-    return sys.platform == "win32"
-
-
-@pytest.fixture
-def skip_on_windows():
-    """Skip test if running on Windows."""
-    if is_windows():
-        pytest.skip("Test not supported on Windows")
-
-
 def smart_filter(completion_list: list, trigger_character: Optional[str] = None) -> list:
     """
     Imitate client-side completion filtering using fuzzy search.

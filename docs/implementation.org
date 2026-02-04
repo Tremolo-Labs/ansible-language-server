@@ -25,7 +25,7 @@ The server follows the standard Language Server Protocol architecture, built on 
 *TypeScript:* [[file:src/server.ts][src/server.ts]] (66 lines) creates a =Connection= and initializes =AnsibleLanguageService=.
 
 *Python:*
-#+begin_src python :tangle src/ansible_ls/server.py :mkdirp t
+#+begin_src python :tangle ../../src/ansible_ls/server.py :mkdirp t
 """Ansible Language Server entry point."""
 
 from pygls.lsp.server import LanguageServer

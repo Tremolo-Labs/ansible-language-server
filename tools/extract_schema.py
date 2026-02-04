@@ -38,7 +38,6 @@ def extract_keywords() -> dict[str, list[str]]:
 
     except ImportError as e:
         print(f"Warning: Could not import Ansible: {e}", file=sys.stderr)
-        keywords = _static_keyword_fallback()
 
     return keywords
 
@@ -68,9 +67,8 @@ def extract_keyword_metadata() -> dict[str, dict[str, Any]]:
                     "alias": getattr(attr, "alias", None),
                 }
 
-    except ImportError:
-        logger = logging.getLogger(__name__)
-        logger.debug("meow")
+    except ImportError as e:
+        print(f"Warning: Could not import Ansible: {e}", file=sys.stderr)
 
     return metadata
 
@@ -172,32 +170,35 @@ def extract_lookups() -> dict[str, dict[str, Any]]:
     """Extract lookup plugins with their option metadata."""
     lookups: dict[str, dict[str, Any]] = {}
 
+    try:
+        from ansible.plugins.loader import lookup_loader
 
-    from ansible.plugins.loader import lookup_loader
+        for wrapper in lookup_loader.all():
+            name = wrapper.ansible_name
+            short_name = name.split(".")[-1] if "." in name else name
 
-    for wrapper in lookup_loader.all():
-        name = wrapper.ansible_name
-        short_name = name.split(".")[-1] if "." in name else name
+            # Extract option definitions
+            options = {}
+            opt_defs = getattr(wrapper, "option_definitions", None)
+            if opt_defs:
+                for opt_name, opt_meta in opt_defs.items():
+                    options[opt_name] = {
+                        "description": opt_meta.get("description", ""),
+                        "type": opt_meta.get("type", "string"),
+                        "required": opt_meta.get("required", False),
+                        "default": _serialize_default(opt_meta.get("default")),
+                        "choices": opt_meta.get("choices"),
+                    }
 
-        # Extract option definitions
-        options = {}
-        opt_defs = getattr(wrapper, "option_definitions", None)
-        if opt_defs:
-            for opt_name, opt_meta in opt_defs.items():
-                options[opt_name] = {
-                    "description": opt_meta.get("description", ""),
-                    "type": opt_meta.get("type", "string"),
-                    "required": opt_meta.get("required", False),
-                    "default": _serialize_default(opt_meta.get("default")),
-                    "choices": opt_meta.get("choices"),
-                }
+            lookups[name] = {
+                "short_name": short_name,
+                "aliases": list(wrapper.ansible_aliases) if wrapper.ansible_aliases else [],
+                "options": options,
+                "lazy_eval": getattr(wrapper, "accept_lazy_markers", False),
+            }
 
-        lookups[name] = {
-            "short_name": short_name,
-            "aliases": list(wrapper.ansible_aliases) if wrapper.ansible_aliases else [],
-            "options": options,
-            "lazy_eval": getattr(wrapper, "accept_lazy_markers", False),
-        }
+    except ImportError as e:
+        print(f"Warning: Could not import lookup_loader: {e}", file=sys.stderr)
 
     return lookups
 

@@ -21,7 +21,7 @@ The keyword extraction script extracts data from Ansible internals and tooling, 
 | Lookups       | =lookup_loader.all()=            | 25 plugins     | With option metadata    |
 | Magic Vars    | Hardcoded list                 | 20+            | Documented in Ansible   |
 | Callbacks     | =callback_loader.all()=          | 10+ plugins    | For advanced use        |
-#+begin_src python :tangle tools/extract_schema.py :mkdirp t
+#+begin_src python :tangle ../../tools/extract_schema.py :mkdirp t
 """Extract Ansible schema and generate typed Python modules.
 
 Imports Ansible's internal APIs to extract the schema of plays, tasks,
@@ -48,7 +48,7 @@ import logging
 
 Ansible defines play/task/block/role keywords as class attributes using a descriptor pattern called =fattributes=. There's also custom filters and plugins, 
 
-#+begin_src python :tangle tools/extract_schema.py :mkdirp t
+#+begin_src python :tangle ../../tools/extract_schema.py :mkdirp t
 def extract_keywords() -> dict[str, list[str]]:
     """Extract keywords from Ansible playbook classes via fattributes."""
     keywords: dict[str, list[str]] = {
@@ -75,7 +75,7 @@ def extract_keywords() -> dict[str, list[str]]:
     return keywords
 
 #+end_src
-#+begin_src python :tangle tools/extract_schema.py :mkdirp t
+#+begin_src python :tangle ../../tools/extract_schema.py :mkdirp t
 def extract_keyword_metadata() -> dict[str, dict[str, Any]]:
     """Extract detailed keyword metadata (type, required, default)."""
     metadata: dict[str, dict[str, Any]] = {}
@@ -142,7 +142,7 @@ for wrapper in filter_loader.all():
     print(f"{wrapper.ansible_name}: aliases={wrapper.ansible_aliases}")
 #+end_src
 
-#+begin_src python :tangle tools/extract_schema.py :mkdirp t
+#+begin_src python :tangle ../../tools/extract_schema.py :mkdirp t
 def extract_jinja_filters() -> dict[str, dict[str, Any]]:
     """Extract Jinja2 filters from Ansible and builtin Jinja2."""
     filters: dict[str, dict[str, Any]] = {}
@@ -223,7 +223,7 @@ from ansible.plugins.loader import test_loader
 for wrapper in test_loader.all():
     print(f"{wrapper.ansible_name}: aliases={wrapper.ansible_aliases}")
 #+end_src
-#+begin_src python :tangle tools/extract_schema.py :mkdirp t
+#+begin_src python :tangle ../../tools/extract_schema.py :mkdirp t
 
 def extract_jinja_tests() -> dict[str, dict[str, Any]]:
     """Extract Jinja2 tests from Ansible and builtin Jinja2."""
@@ -303,7 +303,7 @@ Sample lookups (25 in 2.20.1):
 - =url= - HTTP fetch
 - =sequence=, =random_choice=, =cartesian= - Generation
 
-#+begin_src python :tangle tools/extract_schema.py :mkdirp t
+#+begin_src python :tangle ../../tools/extract_schema.py :mkdirp t
 def extract_lookups() -> dict[str, dict[str, Any]]:
     """Extract lookup plugins with their option metadata."""
     lookups: dict[str, dict[str, Any]] = {}
@@ -373,7 +373,7 @@ Magic variables are injected into the execution context. These are hardcoded (no
 | =ansible_loop_var=         | Loop   | Name of the loop variable               |
 | =ansible_index_var=        | Loop   | Name of loop index variable             |
 
-#+begin_src python :tangle tools/extract_schema.py :mkdirp t
+#+begin_src python :tangle ../../tools/extract_schema.py :mkdirp t
 
 def extract_magic_variables() -> dict[str, dict[str, str]]:
     """Return documented magic variables (these are hardcoded, not from API)."""
@@ -529,7 +529,7 @@ def extract_magic_variables() -> dict[str, dict[str, str]]:
 
 #+end_src
 *** callback plugins
-#+begin_src python :tangle tools/extract_schema.py :mkdirp t
+#+begin_src python :tangle ../../tools/extract_schema.py :mkdirp t
 
 def extract_callback_plugins() -> dict[str, dict[str, Any]]:
     """Extract callback plugin names (for advanced grammar support)."""
@@ -555,7 +555,7 @@ def extract_callback_plugins() -> dict[str, dict[str, Any]]:
 #+end_src
 *** Full Extraction Script
 
-#+begin_src python :tangle tools/extract_schema.py :mkdirp t
+#+begin_src python :tangle ../../tools/extract_schema.py :mkdirp t
 
 def _serialize_default(value: Any) -> Any:
     """Serialize default values to JSON-safe types."""
@@ -573,7 +573,7 @@ def _serialize_default(value: Any) -> Any:
 
 #+end_src
 
-#+begin_src python :tangle tools/extract_schema.py :mkdirp t
+#+begin_src python :tangle ../../tools/extract_schema.py :mkdirp t
 
 # main() defined after generator functions
 #+end_src
@@ -589,7 +589,7 @@ Generate Python modules from Jinja2 templates. Templates live in =tools/template
 
 Schema template - the core datatype definitions:
 
-#+begin_src jinja2 :tangle tools/templates/schema.py.j2 :mkdirp t
+#+begin_src jinja2 :tangle ../../tools/templates/schema.py.j2 :mkdirp t
 """Ansible type schemas - auto-generated from Ansible source.
 
 Each TypeSchema describes the structure of an Ansible datatype
@@ -687,7 +687,7 @@ def get_schema(name: str) -> Optional[TypeSchema]:
 
 Jinja filters and tests template:
 
-#+begin_src jinja2 :tangle tools/templates/jinja.py.j2 :mkdirp t
+#+begin_src jinja2 :tangle ../../tools/templates/jinja.py.j2 :mkdirp t
 """Jinja2 filters and tests - auto-generated from Ansible source.
 
 DO NOT EDIT. Regenerate with: python tools/extract_schema.py
@@ -741,7 +741,7 @@ def is_valid_test(name: str) -> bool:
 
 Lookup plugins template:
 
-#+begin_src jinja2 :tangle tools/templates/lookups.py.j2 :mkdirp t
+#+begin_src jinja2 :tangle ../../tools/templates/lookups.py.j2 :mkdirp t
 """Lookup plugins - auto-generated from Ansible source.
 
 DO NOT EDIT. Regenerate with: python tools/extract_schema.py
@@ -785,7 +785,7 @@ def is_valid_lookup(name: str) -> bool:
 
 Magic variables template:
 
-#+begin_src jinja2 :tangle tools/templates/magic_vars.py.j2 :mkdirp t
+#+begin_src jinja2 :tangle ../../tools/templates/magic_vars.py.j2 :mkdirp t
 """Magic variables - auto-generated from Ansible source.
 
 DO NOT EDIT. Regenerate with: python tools/extract_schema.py
@@ -817,7 +817,7 @@ def is_magic_variable(name: str) -> bool:
 
 Package init template:
 
-#+begin_src jinja2 :tangle tools/templates/__init__.py.j2 :mkdirp t
+#+begin_src jinja2 :tangle ../../tools/templates/__init__.py.j2 :mkdirp t
 """Ansible schema definitions - auto-generated from Ansible source.
 
 Provides type schemas, Jinja2 filters/tests, lookup plugins, and magic variables
@@ -865,7 +865,7 @@ __all__ = [
 
 *** Generator
 
-#+begin_src python :tangle tools/extract_schema.py :mkdirp t
+#+begin_src python :tangle ../../tools/extract_schema.py :mkdirp t
 
 OUTPUT_DIR = Path("src/ansible_ls/ansible_schema")
 TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -945,7 +945,7 @@ if __name__ == "__main__":
 These tests verify the structure and contracts of extraction functions.
 Functions that require Ansible return empty collections when unavailable.
 
-#+begin_src python :tangle tests/tools/test_extract_schema.py :mkdirp t
+#+begin_src python :tangle ../../tests/tools/test_extract_schema.py :mkdirp t
 """Tests for Ansible metadata extraction.
 
 These tests verify extraction function contracts (return types, structure).
@@ -1137,7 +1137,7 @@ Ansible modules have structured documentation that we cache for hover and comple
 
 *Python:* Dataclasses provide the same structure with type hints:
 
-#+begin_src python :tangle src/ansible_ls/models/module.py :mkdirp t
+#+begin_src python :tangle ../../src/ansible_ls/models/module.py :mkdirp t
 """Module metadata and documentation models.
 
 Port of src/interfaces/module.ts
@@ -1210,7 +1210,7 @@ class ModuleMetadata:
         )
 #+end_src
 
-#+begin_src python :tangle src/ansible_ls/models/__init__.py :mkdirp t
+#+begin_src python :tangle ../../src/ansible_ls/models/__init__.py :mkdirp t
 """Data models for Ansible Language Server."""
 
 from .module import ModuleMetadata, ModuleDocumentation, Option
@@ -1229,7 +1229,7 @@ Settings map to VS Code's =ansible.*= configuration namespace.
 
 *Python:* Nested dataclasses mirror the JSON structure:
 
-#+begin_src python :tangle src/ansible_ls/models/settings.py :mkdirp t
+#+begin_src python :tangle ../../src/ansible_ls/models/settings.py :mkdirp t
 """Extension settings model.
 
 Port of src/interfaces/extensionSettings.ts
