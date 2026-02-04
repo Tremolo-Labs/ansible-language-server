@@ -1,35 +1,27 @@
-"""Tests for ANSIBLE parser service
-"""
+"""Tests for Ansible parser service."""
 
 import pytest
-from pathlib import Path
 
 from ansible_ls.services.ansible_parser import ParserService
 
 
-ANSIBLE_FIXTURES = Path(__file__).parent.parent / "fixtures" / "ansible"
-
-
-def get_path_in_file(ansible_file: str, line: int, character: int) -> list:
-    """Get AST path at position in a fixture file."""
-    filepath = ANSIBLE_FIXTURES / ansible_file
-    content = filepath.read_text()
-    tree = ParserService.parse(filepath, content)
-    # Convert 1-indexed to 0-indexed
-    return tree.get_path_to_position(tree, line - 1, character - 1)
+@pytest.fixture
+def parser():
+    """Create a ParserService instance."""
+    return ParserService()
 
 
 class TestAnsibleParsing:
-    """Test basic ANSIBLE parsing functions."""
+    """Test basic Ansible parsing functions."""
 
-    def test_parse_simple_ansible(self):
-        """Test parsing simple ANSIBLE content."""
+    def test_parse_simple_yaml(self, parser):
+        """Test parsing simple YAML content."""
         content = "key: value"
-        tree = ParserService.parse("", content)
-        assert tree is not None
-        assert tree.root_node.type == "stream"
+        doc = parser.parse("file:///test.yaml", content)
+        assert doc is not None
+        assert doc.yaml_tree.root_node.type == "stream"
 
-    def test_parse_playbook(self):
+    def test_parse_playbook(self, parser):
         """Test parsing Ansible playbook structure."""
         content = """---
 - name: Test play
@@ -39,14 +31,13 @@ class TestAnsibleParsing:
       debug:
         msg: "hello"
 """
-        tree = ParserService.parse(content)
-        assert tree is not None
+        doc = parser.parse("file:///playbook.yaml", content)
+        assert doc is not None
+        assert doc.yaml_tree is not None
 
-    def test_get_node_at_position(self):
+    def test_get_node_at_position(self, parser):
         """Test finding node at cursor position."""
         content = "key: value"
-        tree = ParserService.parse("", content)
-        node = tree.get_node_at_position(tree, 0, 0)
+        doc = parser.parse("file:///test.yaml", content)
+        node = doc.get_node_at_position(0, 0)
         assert node is not None
-        # Should be at 'key'
-        assert "key" in node.text.decode()

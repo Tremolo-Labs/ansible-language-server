@@ -59,6 +59,8 @@
 :ID:       b3d6efec-9644-4b4f-b4fe-2f3a572a7273
 :END:
 
+- Note taken on [2026-02-04 Wed 16:32] \\
+  Jinja2 imports (I think it actually comes with Ansible?) but the =repr= filter/plugin/whatever is missing. Do we need to import it? what's going on?
 #+begin_src bash :results output :wrap example :dir ..
 uv run pytest tests/ -v
 #+end_src
@@ -72,182 +74,43 @@ rootdir: /home/chad/code/ansible-language-server
 configfile: pyproject.toml
 plugins: asyncio-1.3.0
 asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
-collecting ... collected 52 items
+collecting ... collected 28 items
 
-tests/services/ansible_parser/test_ansible_parser.py::TestAnsibleParsing::test_parse_simple_ansible FAILED [  1%]
-tests/services/ansible_parser/test_ansible_parser.py::TestAnsibleParsing::test_parse_playbook FAILED [  3%]
-tests/services/ansible_parser/test_ansible_parser.py::TestAnsibleParsing::test_get_node_at_position FAILED [  5%]
-tests/services/test_settings_manager.py::TestSettingsManager::test_get_returns_default_settings PASSED [  7%]
-tests/services/test_settings_manager.py::TestSettingsManager::test_get_caches_settings PASSED [  9%]
-tests/services/test_settings_manager.py::TestSettingsManager::test_invalidate_clears_cache PASSED [ 11%]
-tests/services/test_settings_manager.py::TestSettingsManager::test_invalidate_all_clears_everything PASSED [ 13%]
-tests/tools/test_extract_keywords.py::TestKeywordExtraction::test_play_keywords_include_hosts PASSED [ 15%]
-tests/tools/test_extract_keywords.py::TestKeywordExtraction::test_task_keywords_include_name PASSED [ 17%]
-tests/tools/test_extract_keywords.py::TestKeywordExtraction::test_task_keywords_include_register PASSED [ 19%]
-tests/tools/test_extract_keywords.py::TestKeywordExtraction::test_task_keywords_include_when PASSED [ 21%]
-tests/tools/test_extract_keywords.py::TestKeywordExtraction::test_block_keywords_include_rescue PASSED [ 23%]
-tests/tools/test_extract_keywords.py::TestKeywordExtraction::test_block_keywords_include_always PASSED [ 25%]
-tests/tools/test_extract_keywords.py::TestKeywordExtraction::test_role_keywords_exist PASSED [ 26%]
-tests/tools/test_extract_keywords.py::TestJinjaFilterExtraction::test_extracts_ansible_filters PASSED [ 28%]
-tests/tools/test_extract_keywords.py::TestJinjaFilterExtraction::test_extracts_jinja2_builtin_filters PASSED [ 30%]
-tests/tools/test_extract_keywords.py::TestJinjaFilterExtraction::test_filter_has_metadata PASSED [ 32%]
-tests/tools/test_extract_keywords.py::TestJinjaTestExtraction::test_extracts_ansible_tests PASSED [ 34%]
-tests/tools/test_extract_keywords.py::TestJinjaTestExtraction::test_extracts_jinja2_builtin_tests PASSED [ 36%]
-tests/tools/test_extract_keywords.py::TestJinjaTestExtraction::test_test_has_metadata PASSED [ 38%]
-tests/tools/test_extract_keywords.py::TestLookupExtraction::test_extracts_lookup_plugins PASSED [ 40%]
-tests/tools/test_extract_keywords.py::TestLookupExtraction::test_lookup_has_options PASSED [ 42%]
-tests/tools/test_extract_keywords.py::TestLookupExtraction::test_lookup_option_structure PASSED [ 44%]
-tests/tools/test_extract_keywords.py::TestMagicVariableExtraction::test_extracts_magic_variables PASSED [ 46%]
-tests/tools/test_extract_keywords.py::TestMagicVariableExtraction::test_magic_variable_has_scope PASSED [ 48%]
-tests/tools/test_extract_keywords.py::TestMagicVariableExtraction::test_magic_variable_has_description PASSED [ 50%]
-tests/tools/test_extract_keywords.py::TestKeywordMetadataExtraction::test_extracts_keyword_metadata PASSED [ 51%]
-tests/tools/test_extract_keywords.py::TestKeywordMetadataExtraction::test_metadata_includes_isa PASSED [ 53%]
-tests/tools/test_extract_keywords.py::TestKeywordMetadataExtraction::test_metadata_includes_required PASSED [ 55%]
-tests/tools/test_extract_keywords.py::TestMainOutput::test_main_creates_type_modules PASSED [ 57%]
-tests/tools/test_extract_keywords.py::TestMainOutput::test_generated_modules_are_valid_python FAILED [ 59%]
-tests/tools/test_extract_schema.py::TestKeywordExtraction::test_returns_dict_with_contexts PASSED [ 61%]
-tests/tools/test_extract_schema.py::TestKeywordExtraction::test_values_are_lists PASSED [ 63%]
-tests/tools/test_extract_schema.py::TestJinjaFilterExtraction::test_returns_dict PASSED [ 65%]
-tests/tools/test_extract_schema.py::TestJinjaFilterExtraction::test_filter_has_metadata PASSED [ 67%]
-tests/tools/test_extract_schema.py::TestJinjaTestExtraction::test_returns_dict PASSED [ 69%]
-tests/tools/test_extract_schema.py::TestJinjaTestExtraction::test_test_has_metadata PASSED [ 71%]
-tests/tools/test_extract_schema.py::TestLookupExtraction::test_returns_dict PASSED [ 73%]
-tests/tools/test_extract_schema.py::TestLookupExtraction::test_lookup_structure PASSED [ 75%]
-tests/tools/test_extract_schema.py::TestMagicVariableExtraction::test_extracts_magic_variables PASSED [ 76%]
-tests/tools/test_extract_schema.py::TestMagicVariableExtraction::test_magic_variable_has_scope PASSED [ 78%]
-tests/tools/test_extract_schema.py::TestMagicVariableExtraction::test_magic_variable_has_description PASSED [ 80%]
-tests/tools/test_extract_schema.py::TestKeywordMetadataExtraction::test_returns_dict PASSED [ 82%]
-tests/tools/test_extract_schema.py::TestKeywordMetadataExtraction::test_metadata_structure_when_present PASSED [ 84%]
-tests/tools/test_extract_schema.py::TestMainOutput::test_main_creates_schema_directory FAILED [ 86%]
-tests/tools/test_extract_schema.py::TestMainOutput::test_generated_modules_are_valid_python FAILED [ 88%]
-tests/tools/test_grammar_parsing.py::TestPlayParsing::test_simple_play SKIPPED [ 90%]
-tests/tools/test_grammar_parsing.py::TestPlayParsing::test_play_with_keywords SKIPPED [ 92%]
-tests/tools/test_grammar_parsing.py::TestTaskParsing::test_module_with_fqcn SKIPPED [ 94%]
-tests/tools/test_grammar_parsing.py::TestTaskParsing::test_task_with_loop SKIPPED [ 96%]
-tests/tools/test_grammar_parsing.py::TestJinjaParsing::test_simple_variable SKIPPED [ 98%]
+tests/services/ansible_parser/test_ansible_parser.py::TestAnsibleParsing::test_parse_simple_yaml PASSED [  3%]
+tests/services/ansible_parser/test_ansible_parser.py::TestAnsibleParsing::test_parse_playbook PASSED [  7%]
+tests/services/ansible_parser/test_ansible_parser.py::TestAnsibleParsing::test_get_node_at_position PASSED [ 10%]
+tests/services/test_settings_manager.py::TestSettingsManager::test_get_returns_default_settings PASSED [ 14%]
+tests/services/test_settings_manager.py::TestSettingsManager::test_get_caches_settings PASSED [ 17%]
+tests/services/test_settings_manager.py::TestSettingsManager::test_invalidate_clears_cache PASSED [ 21%]
+tests/services/test_settings_manager.py::TestSettingsManager::test_invalidate_all_clears_everything PASSED [ 25%]
+tests/tools/test_extract_schema.py::TestKeywordExtraction::test_returns_dict_with_contexts PASSED [ 28%]
+tests/tools/test_extract_schema.py::TestKeywordExtraction::test_values_are_lists PASSED [ 32%]
+tests/tools/test_extract_schema.py::TestJinjaFilterExtraction::test_returns_dict PASSED [ 35%]
+tests/tools/test_extract_schema.py::TestJinjaFilterExtraction::test_filter_has_metadata PASSED [ 39%]
+tests/tools/test_extract_schema.py::TestJinjaTestExtraction::test_returns_dict PASSED [ 42%]
+tests/tools/test_extract_schema.py::TestJinjaTestExtraction::test_test_has_metadata PASSED [ 46%]
+tests/tools/test_extract_schema.py::TestLookupExtraction::test_returns_dict PASSED [ 50%]
+tests/tools/test_extract_schema.py::TestLookupExtraction::test_lookup_structure PASSED [ 53%]
+tests/tools/test_extract_schema.py::TestMagicVariableExtraction::test_extracts_magic_variables PASSED [ 57%]
+tests/tools/test_extract_schema.py::TestMagicVariableExtraction::test_magic_variable_has_scope PASSED [ 60%]
+tests/tools/test_extract_schema.py::TestMagicVariableExtraction::test_magic_variable_has_description PASSED [ 64%]
+tests/tools/test_extract_schema.py::TestKeywordMetadataExtraction::test_returns_dict PASSED [ 67%]
+tests/tools/test_extract_schema.py::TestKeywordMetadataExtraction::test_metadata_structure_when_present PASSED [ 71%]
+tests/tools/test_extract_schema.py::TestMainOutput::test_main_creates_schema_directory FAILED [ 75%]
+tests/tools/test_extract_schema.py::TestMainOutput::test_generated_modules_are_valid_python FAILED [ 78%]
+tests/tools/test_grammar_parsing.py::TestPlayParsing::test_simple_play SKIPPED [ 82%]
+tests/tools/test_grammar_parsing.py::TestPlayParsing::test_play_with_keywords SKIPPED [ 85%]
+tests/tools/test_grammar_parsing.py::TestTaskParsing::test_module_with_fqcn SKIPPED [ 89%]
+tests/tools/test_grammar_parsing.py::TestTaskParsing::test_task_with_loop SKIPPED [ 92%]
+tests/tools/test_grammar_parsing.py::TestJinjaParsing::test_simple_variable SKIPPED [ 96%]
 tests/tools/test_grammar_parsing.py::TestJinjaParsing::test_filter_chain SKIPPED [100%]
 
 =================================== FAILURES ===================================
-_________________ TestAnsibleParsing.test_parse_simple_ansible _________________
-
-self = <test_ansible_parser.TestAnsibleParsing object at 0x7fb987f01310>
-
-    def test_parse_simple_ansible(self):
-        """Test parsing simple ANSIBLE content."""
-        content = "key: value"
->       tree = ParserService.parse("", content)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-E       TypeError: ParserService.parse() missing 1 required positional argument: 'content'
-
-tests/services/ansible_parser/test_ansible_parser.py:28: TypeError
-____________________ TestAnsibleParsing.test_parse_playbook ____________________
-
-self = <test_ansible_parser.TestAnsibleParsing object at 0x7fb987f00e10>
-
-        def test_parse_playbook(self):
-            """Test parsing Ansible playbook structure."""
-            content = """---
-    - name: Test play
-      hosts: all
-      tasks:
-        - name: Test task
-          debug:
-            msg: "hello"
-    """
->           tree = ParserService.parse(content)
-                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-E           TypeError: ParserService.parse() missing 2 required positional arguments: 'uri' and 'content'
-
-tests/services/ansible_parser/test_ansible_parser.py:42: TypeError
-_________________ TestAnsibleParsing.test_get_node_at_position _________________
-
-self = <test_ansible_parser.TestAnsibleParsing object at 0x7fb9887dd350>
-
-    def test_get_node_at_position(self):
-        """Test finding node at cursor position."""
-        content = "key: value"
->       tree = ParserService.parse("", content)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-E       TypeError: ParserService.parse() missing 1 required positional argument: 'content'
-
-tests/services/ansible_parser/test_ansible_parser.py:48: TypeError
-____________ TestMainOutput.test_generated_modules_are_valid_python ____________
-
-self = <test_extract_keywords.TestMainOutput object at 0x7fb987ab4550>
-tmp_path = PosixPath('/tmp/pytest-of-chad/pytest-12/test_generated_modules_are_val0')
-monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fb9875248d0>
-
-    def test_generated_modules_are_valid_python(self, tmp_path, monkeypatch):
-        """Generated modules should be valid Python."""
-        import ast
-        from tools import extract_keywords
-    
-        monkeypatch.chdir(tmp_path)
-        extract_keywords.main()
-    
-        output_dir = tmp_path / "src" / "ansible_ls" / "ansible_types"
-        for py_file in output_dir.glob("*.py"):
-            content = py_file.read_text()
-            # Should parse without error
->           ast.parse(content)
-
-/home/chad/code/ansible-language-server/tests/tools/test_extract_keywords.py:278: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-source = '"""Ansible keywords - auto-generated from Ansible source.\n\nDO NOT EDIT. Regenerate with: python tools/extract_keywo...rd_info(name: str) -> Optional[KeywordInfo]:\n    """Get metadata for a keyword."""\n    return KEYWORD_INFO.get(name)'
-filename = '<unknown>', mode = 'exec'
-
-    def parse(source, filename='<unknown>', mode='exec', *,
-              type_comments=False, feature_version=None, optimize=-1):
-        """
-        Parse the source into an AST node.
-        Equivalent to compile(source, filename, mode, PyCF_ONLY_AST).
-        Pass type_comments=True to get back type comments where the syntax allows.
-        """
-        flags = PyCF_ONLY_AST
-        if optimize > 0:
-            flags |= PyCF_OPTIMIZED_AST
-        if type_comments:
-            flags |= PyCF_TYPE_COMMENTS
-        if feature_version is None:
-            feature_version = -1
-        elif isinstance(feature_version, tuple):
-            major, minor = feature_version  # Should be a 2-tuple.
-            if major != 3:
-                raise ValueError(f"Unsupported major version: {major}")
-            feature_version = minor
-        # Else it should be an int giving the minor version for 3.x.
->       return compile(source, filename, mode, flags,
-                       _feature_version=feature_version, optimize=optimize)
-E         File "<unknown>", line 39
-E           "collections": KeywordInfo("collections", "play", 'list', False, '<callable: _ensure_default_collection>', (<class 'str'>,), None),
-E                                                                                                                       ^
-E       SyntaxError: invalid syntax
-
-/home/chad/.local/share/uv/python/cpython-3.14.2-linux-x86_64-gnu/lib/python3.14/ast.py:46: SyntaxError
------------------------------ Captured stdout call -----------------------------
-Extracted metadata from Ansible 2.20.2:
-  play_keywords: 42
-  task_keywords: 42
-  block_keywords: 31
-  role_keywords: 26
-  jinja_filters: 122
-  jinja_tests: 88
-  lookups: 25
-  magic_variables: 35
-  callbacks: 5
-Generated src/ansible_ls/ansible_types/__init__.py
-Generated src/ansible_ls/ansible_types/keywords.py
-Generated src/ansible_ls/ansible_types/jinja.py
-Generated src/ansible_ls/ansible_types/lookups.py
-Generated src/ansible_ls/ansible_types/magic_vars.py
-
-Generated 5 modules in src/ansible_ls/ansible_types
 ______________ TestMainOutput.test_main_creates_schema_directory _______________
 
-self = <test_extract_schema.TestMainOutput object at 0x7fb987ab56d0>
-tmp_path = PosixPath('/tmp/pytest-of-chad/pytest-12/test_main_creates_schema_direc0')
-monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fb987aa0c00>
+self = <test_extract_schema.TestMainOutput object at 0x7fc2f2a3c550>
+tmp_path = PosixPath('/tmp/pytest-of-chad/pytest-21/test_main_creates_schema_direc0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fc2f2c27bf0>
 
     def test_main_creates_schema_directory(self, tmp_path, monkeypatch):
         """Main should create output directory with schema files."""
@@ -359,9 +222,9 @@ Extracted schema from Ansible 2.20.2:
   magic_variables: 35
 ____________ TestMainOutput.test_generated_modules_are_valid_python ____________
 
-self = <test_extract_schema.TestMainOutput object at 0x7fb987ab5810>
-tmp_path = PosixPath('/tmp/pytest-of-chad/pytest-12/test_generated_modules_are_val1')
-monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fb987aec150>
+self = <test_extract_schema.TestMainOutput object at 0x7fc2f2a3c690>
+tmp_path = PosixPath('/tmp/pytest-of-chad/pytest-21/test_generated_modules_are_val0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fc2f2a5d370>
 
     def test_generated_modules_are_valid_python(self, tmp_path, monkeypatch):
         """Generated modules should be valid Python."""
@@ -473,13 +336,9 @@ Extracted schema from Ansible 2.20.2:
   lookups: 25
   magic_variables: 35
 =========================== short test summary info ============================
-FAILED tests/services/ansible_parser/test_ansible_parser.py::TestAnsibleParsing::test_parse_simple_ansible
-FAILED tests/services/ansible_parser/test_ansible_parser.py::TestAnsibleParsing::test_parse_playbook
-FAILED tests/services/ansible_parser/test_ansible_parser.py::TestAnsibleParsing::test_get_node_at_position
-FAILED tests/tools/test_extract_keywords.py::TestMainOutput::test_generated_modules_are_valid_python
 FAILED tests/tools/test_extract_schema.py::TestMainOutput::test_main_creates_schema_directory
 FAILED tests/tools/test_extract_schema.py::TestMainOutput::test_generated_modules_are_valid_python
-=================== 6 failed, 40 passed, 6 skipped in 0.91s ====================
+=================== 2 failed, 20 passed, 6 skipped in 0.41s ====================
 #+end_example
 
 ** TODO multiple yaml grammars

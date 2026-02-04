@@ -17,7 +17,7 @@ The =SettingsManager= caches per-document settings and handles LSP configuration
 *TypeScript:* [[file:src/services/settingsManager.ts][src/services/settingsManager.ts]] (~150 lines) manages settings caching and LSP =workspace/configuration= requests.
 
 *Python:*
-#+begin_src python :tangle src/ansible_ls/services/settings_manager.py :mkdirp t
+#+begin_src python :tangle ../../src/ansible_ls/services/settings_manager.py :mkdirp t
 """Settings management service.
 
 Port of src/services/settingsManager.ts
@@ -106,7 +106,7 @@ The =WorkspaceManager= creates a =WorkspaceFolderContext= for each folder in a m
 *TypeScript:* [[file:src/services/workspaceManager.ts][src/services/workspaceManager.ts]] (~240 lines) creates and manages per-folder contexts.
 
 *Python:*
-#+begin_src python :tangle src/ansible_ls/services/workspace_manager.py :mkdirp t
+#+begin_src python :tangle ../../src/ansible_ls/services/workspace_manager.py :mkdirp t
 """Workspace management service.
 
 Port of src/services/workspaceManager.ts
@@ -265,7 +265,7 @@ The =DocsLibrary= discovers and caches Ansible module documentation from builtin
 *TypeScript:* [[file:src/services/docsLibrary.ts][src/services/docsLibrary.ts]] (~275 lines) caches module metadata and documentation.
 
 *Python:*
-#+begin_src python :tangle src/ansible_ls/services/docs_library.py :mkdirp t
+#+begin_src python :tangle ../../src/ansible_ls/services/docs_library.py :mkdirp t
 """Documentation library service.
 
 Port of src/services/docsLibrary.ts
@@ -417,7 +417,7 @@ The =ValidationManager= orchestrates validation from ansible-lint (primary) or s
 *TypeScript:* [[file:src/services/validationManager.ts][src/services/validationManager.ts]] (~180 lines) and [[file:src/services/ansibleLint.ts][src/services/ansibleLint.ts]] (~200 lines) handle validation.
 
 *Python:*
-#+begin_src python :tangle src/ansible_ls/services/validation_manager.py :mkdirp t
+#+begin_src python :tangle ../../src/ansible_ls/services/validation_manager.py :mkdirp t
 """Validation management service.
 
 Port of src/services/validationManager.ts
@@ -545,7 +545,7 @@ class ValidationManager:
         return mapping.get(severity, types.DiagnosticSeverity.Warning)
 #+end_src
 
-#+begin_src python :tangle src/ansible_ls/services/ansible_lint.py :mkdirp t
+#+begin_src python :tangle ../../src/ansible_ls/services/ansible_lint.py :mkdirp t
 """ansible-lint integration.
 
 Port of src/services/ansibleLint.ts
@@ -617,7 +617,7 @@ async def run_ansible_lint(
     return []
 #+end_src
 
-#+begin_src python :tangle src/ansible_ls/services/__init__.py :mkdirp t
+#+begin_src python :tangle ../../src/ansible_ls/services/__init__.py :mkdirp t
 """Core services for the language server."""
 #+end_src
 
@@ -644,7 +644,7 @@ For a language server that re-parses on every keystroke, we need:
 https://tree-sitter.github.io/tree-sitter/using-parsers/3-advanced-parsing.html#multi-language-documents
 
 
-#+begin_src python :tangle src/ansible_ls/services/ansible_parser/__init__.py :mkdirp t
+#+begin_src python :tangle ../../src/ansible_ls/services/ansible_parser/__init__.py :mkdirp t
 """Ansible parser package - tree-sitter based parsing for Ansible documents."""
 
 from .parser_service import ParserService
@@ -653,7 +653,7 @@ from .ansible_document import AnsibleDocument, AnsibleContext
 __all__ = ["ParserService", "AnsibleDocument", "AnsibleContext"]
 #+end_src
 
-#+begin_src python :tangle src/ansible_ls/services/ansible_parser/ansible_document.py :mkdirp t
+#+begin_src python :tangle ../../src/ansible_ls/services/ansible_parser/ansible_document.py :mkdirp t
 """Ansible document representation with parsed AST.
 
 An AnsibleDocument holds the parsed tree-sitter AST along with
@@ -930,7 +930,7 @@ class AnsibleDocument:
         return key not in task_keywords
 #+end_src
 
-#+begin_src python :tangle src/ansible_ls/services/ansible_parser/parser_service.py :mkdirp t
+#+begin_src python :tangle ../../src/ansible_ls/services/ansible_parser/parser_service.py :mkdirp t
 """Parser service - the main interface for providers to parse and query documents.
 
 This service manages tree-sitter parsers and provides a clean API for
@@ -1186,7 +1186,7 @@ class ParserService:
         return (line, col)
 #+end_src
 
-#+begin_src python :tangle src/ansible_ls/services/ansible_parser/queries.py :mkdirp t
+#+begin_src python :tangle ../../src/ansible_ls/services/ansible_parser/queries.py :mkdirp t
 """Tree-sitter queries for Ansible-specific patterns.
 
 All queries are generated from ansible_schema TypeSchema objects.
@@ -1486,7 +1486,7 @@ I don't need to modify the grammar.
 
 - Note taken on [2026-02-02 Mon 04:09] \\
   these need to be expanded and ported to integration test the whole Ansible grammar. find the declaration of a var from inside jinja2.
-#+begin_src python :tangle tests/services/ansible_parser/test_ansible_parser.py :mkdirp t
+#+begin_src python :tangle ../../tests/services/ansible_parser/test_ansible_parser.py :mkdirp t
 """Tests for Ansible parser service."""
 
 import pytest
