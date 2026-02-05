@@ -27,6 +27,11 @@ class AnsibleContext(Enum):
     JINJA_FILTER = auto()
     JINJA_TEST = auto()
     JINJA_VARIABLE = auto()
+    # Definition target contexts
+    ROLE_NAME = auto()        # In roles: list or role: key value
+    INCLUDE_PATH = auto()     # include_tasks/import_tasks value
+    VARS_FILE_PATH = auto()   # vars_files or include_vars value
+    HANDLER_REF = auto()      # notify: value referencing handler
 
 
 @dataclass
@@ -39,6 +44,33 @@ class InjectedRegion:
     language: str
     tree: Optional["Tree"] = None
     original_text: str = ""
+
+
+@dataclass
+class DefinitionTarget:
+    """A target that can be resolved to a definition location."""
+    kind: AnsibleContext
+    name: str
+    range: tuple[tuple[int, int], tuple[int, int]]  # (start_point, end_point)
+
+
+@dataclass
+class CompletionContext:
+    """Context information for completion at a position.
+
+    Extends basic AnsibleContext with additional info needed for
+    intelligent completion:
+    - Which keys already exist in the current mapping (to avoid duplicates)
+    - The partial key being typed (for filtering)
+    - The module name if completing module options
+    - Whether cursor is at key or value position
+    """
+    context: AnsibleContext
+    current_key: Optional[str] = None
+    existing_keys: set[str] = field(default_factory=set)
+    module_name: Optional[str] = None
+    is_value: bool = False
+    trigger_char: Optional[str] = None
 
 
 @dataclass
@@ -286,3 +318,244 @@ class AnsibleDocument:
         """Check if a key looks like a module name vs a keyword."""
         from ...ansible_schema import ALL_KEYWORDS
         return key not in ALL_KEYWORDS
+
+    # ========================================================================
+    # Definition target detection
+    # ========================================================================
+
+    def get_definition_target_at_position(
+        self, line: int, column: int
+    ) -> Optional[DefinitionTarget]:
+        """Get definition target at position if cursor is on a resolvable reference.
+
+        Returns DefinitionTarget for:
+        - Role names in roles: list or role: key
+        - File paths in include_tasks/import_tasks
+        - Handler names in notify:
+
+        Returns None if position is not on a definition target.
+        """
+        path = self.get_path_to_position(line, column)
+        return self._analyze_definition_target(path)
+
+    def _analyze_definition_target(
+        self, path: list["Node"]
+    ) -> Optional[DefinitionTarget]:
+        """Analyze YAML path for definition targets."""
+        if not path:
+            return None
+
+        # Get the deepest node (likely the value we're on)
+        deepest = path[-1]
+
+        # Walk up to find context
+        for i, node in enumerate(reversed(path)):
+            # Check for block_mapping_pair to get key context
+            if node.type == "block_mapping_pair":
+                key_node = node.child_by_field_name("key")
+                value_node = node.child_by_field_name("value")
+
+                if not key_node:
+                    continue
+
+                key_text = self._get_node_text(key_node)
+
+                # include_tasks / import_tasks / include_role / import_role
+                if key_text in ("include_tasks", "import_tasks", "include_role", "import_role"):
+                    if value_node:
+                        value_text = self._get_node_text(value_node).strip().strip('"\'')
+                        # Skip dynamic paths with Jinja2
+                        if "{{" in value_text:
+                            return None
+                        if key_text in ("include_role", "import_role"):
+                            return DefinitionTarget(
+                                kind=AnsibleContext.ROLE_NAME,
+                                name=value_text,
+                                range=(value_node.start_point, value_node.end_point),
+                            )
+                        return DefinitionTarget(
+                            kind=AnsibleContext.INCLUDE_PATH,
+                            name=value_text,
+                            range=(value_node.start_point, value_node.end_point),
+                        )
+
+                # vars_files / include_vars
+                if key_text in ("vars_files", "include_vars"):
+                    if value_node:
+                        value_text = self._get_node_text(value_node).strip().strip('"\'')
+                        if "{{" in value_text:
+                            return None
+                        return DefinitionTarget(
+                            kind=AnsibleContext.VARS_FILE_PATH,
+                            name=value_text,
+                            range=(value_node.start_point, value_node.end_point),
+                        )
+
+                # role: key in roles list item
+                if key_text == "role":
+                    if value_node:
+                        value_text = self._get_node_text(value_node).strip().strip('"\'')
+                        return DefinitionTarget(
+                            kind=AnsibleContext.ROLE_NAME,
+                            name=value_text,
+                            range=(value_node.start_point, value_node.end_point),
+                        )
+
+            # Check for block_sequence_item under specific keys
+            if node.type == "block_sequence_item":
+                # Look for parent block_mapping_pair to get context
+                parent_pair = self._find_parent_mapping_pair(path, i)
+                if parent_pair:
+                    key_node = parent_pair.child_by_field_name("key")
+                    if key_node:
+                        key_text = self._get_node_text(key_node)
+
+                        # roles: list - simple string role names
+                        if key_text == "roles":
+                            # Get the text of this sequence item
+                            item_text = self._get_node_text(deepest).strip().strip('"\'')
+                            if item_text and "{{" not in item_text:
+                                return DefinitionTarget(
+                                    kind=AnsibleContext.ROLE_NAME,
+                                    name=item_text,
+                                    range=(deepest.start_point, deepest.end_point),
+                                )
+
+                        # notify: list - handler references
+                        if key_text == "notify":
+                            item_text = self._get_node_text(deepest).strip().strip('"\'')
+                            if item_text:
+                                return DefinitionTarget(
+                                    kind=AnsibleContext.HANDLER_REF,
+                                    name=item_text,
+                                    range=(deepest.start_point, deepest.end_point),
+                                )
+
+                        # vars_files: list
+                        if key_text == "vars_files":
+                            item_text = self._get_node_text(deepest).strip().strip('"\'')
+                            if item_text and "{{" not in item_text:
+                                return DefinitionTarget(
+                                    kind=AnsibleContext.VARS_FILE_PATH,
+                                    name=item_text,
+                                    range=(deepest.start_point, deepest.end_point),
+                                )
+
+        return None
+
+    def _find_parent_mapping_pair(
+        self, path: list["Node"], current_idx: int
+    ) -> Optional["Node"]:
+        """Find the parent block_mapping_pair for a node in the path."""
+        # current_idx is from reversed iteration, convert to forward index
+        forward_idx = len(path) - 1 - current_idx
+
+        # Look backwards in the original path
+        for j in range(forward_idx - 1, -1, -1):
+            if path[j].type == "block_mapping_pair":
+                return path[j]
+        return None
+
+    # ========================================================================
+    # Completion context detection
+    # ========================================================================
+
+    def get_completion_context(
+        self, line: int, column: int, trigger_char: Optional[str] = None
+    ) -> "CompletionContext":
+        """Get completion context at position.
+
+        Extends get_context_at_position() with additional info needed for
+        intelligent completion:
+        - Which keys already exist in the current mapping
+        - The partial key being typed
+        - The module name if completing module options
+        - Whether we're at a key or value position
+
+        Args:
+            line: 0-indexed line number
+            column: 0-indexed column number
+            trigger_char: Character that triggered completion (e.g., ':', '-')
+
+        Returns:
+            CompletionContext with context type and additional metadata
+        """
+        # Get basic context first
+        context = self.get_context_at_position(line, column)
+
+        # Get path for detailed analysis
+        path = self.get_path_to_position(line, column)
+
+        # Extract completion-specific info
+        existing_keys: set[str] = set()
+        current_key: Optional[str] = None
+        module_name: Optional[str] = None
+        is_value = False
+
+        # Find the containing block_mapping to get existing keys
+        for node in reversed(path):
+            if node.type == "block_mapping":
+                existing_keys = self._get_mapping_keys(node)
+                break
+
+        # Check if we're completing a key or value
+        for i, node in enumerate(reversed(path)):
+            if node.type == "block_mapping_pair":
+                key_node = node.child_by_field_name("key")
+                value_node = node.child_by_field_name("value")
+
+                if key_node:
+                    key_text = self._get_node_text(key_node)
+                    point = (line, column)
+
+                    # Are we on the key or after the colon?
+                    if value_node and point >= value_node.start_point:
+                        is_value = True
+                        # Check if this key is a module name
+                        if self._is_likely_module_name(key_text):
+                            module_name = key_text
+                    elif key_node.start_point <= point <= key_node.end_point:
+                        # We're typing a key
+                        current_key = self._get_partial_text(key_node, column)
+                break
+
+        # For task/handler context, look for module name in sibling keys
+        if context in (AnsibleContext.TASK, AnsibleContext.HANDLER, AnsibleContext.MODULE_OPTIONS):
+            if not module_name:
+                module_name = self._find_module_in_mapping(path)
+
+        return CompletionContext(
+            context=context,
+            current_key=current_key,
+            existing_keys=existing_keys,
+            module_name=module_name,
+            is_value=is_value,
+            trigger_char=trigger_char,
+        )
+
+    def _get_partial_text(self, node: "Node", column: int) -> str:
+        """Get text from start of node to cursor column."""
+        if node.start_point[0] != node.end_point[0]:
+            # Multi-line node, just get whole text
+            return self._get_node_text(node)
+
+        start_col = node.start_point[1]
+        end_col = min(column, node.end_point[1])
+
+        # Extract from content
+        line_start = self.content.rfind('\n', 0, node.start_byte) + 1
+        return self.content[line_start + start_col:line_start + end_col]
+
+    def _find_module_in_mapping(self, path: list["Node"]) -> Optional[str]:
+        """Find a module name key in the current task mapping."""
+        for node in reversed(path):
+            if node.type == "block_mapping":
+                for child in node.children:
+                    if child.type == "block_mapping_pair":
+                        key_node = child.child_by_field_name("key")
+                        if key_node:
+                            key_text = self._get_node_text(key_node)
+                            if self._is_likely_module_name(key_text):
+                                return key_text
+                break
+        return None

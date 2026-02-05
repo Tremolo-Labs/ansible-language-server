@@ -3,11 +3,15 @@
 from lsprotocol import types
 from pygls.lsp.server import LanguageServer
 
-from .providers import get_hover, get_definition
+from .providers import get_hover, get_definition, get_completions
 from .services.ansible_parser import ParserService
+from .services.settings_manager import SettingsManager
+from .services.workspace_manager import WorkspaceManager
 
 server = LanguageServer("ansible-language-server", "v0.1.0")
 parser_service = ParserService()
+settings_manager = SettingsManager(server)
+workspace_manager = WorkspaceManager(server, settings_manager)
 
 
 @server.feature(types.TEXT_DOCUMENT_DID_OPEN)
@@ -76,6 +80,47 @@ def definition(params: types.DefinitionParams) -> types.LocationLink | None:
         line=params.position.line,
         character=params.position.character,
         workspace_uri=workspace_uri,
+    )
+
+
+@server.feature(
+    types.TEXT_DOCUMENT_COMPLETION,
+    types.CompletionOptions(
+        trigger_characters=[":", "-", " ", "."],
+        resolve_provider=False,  # TODO: Enable for lazy doc loading
+    ),
+)
+async def completion(params: types.CompletionParams) -> types.CompletionList:
+    """Handle completion request.
+
+    Provides context-aware completions for:
+    - Ansible keywords (play/task/block/role)
+    - Module names
+    - Module options
+    - Jinja2 filters, tests, and variables
+    """
+    uri = params.text_document.uri
+    text_doc = server.workspace.get_text_document(uri)
+
+    # Get workspace context for DocsLibrary
+    context = workspace_manager.get_context(uri)
+    docs_library = None
+    if context:
+        docs_library = await context.get_docs_library()
+
+    # Get trigger character if any
+    trigger = None
+    if params.context:
+        trigger = params.context.trigger_character
+
+    return await get_completions(
+        parser_service=parser_service,
+        uri=uri,
+        content=text_doc.source,
+        line=params.position.line,
+        character=params.position.character,
+        docs_library=docs_library,
+        trigger_char=trigger,
     )
 
 

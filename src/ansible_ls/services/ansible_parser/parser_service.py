@@ -11,7 +11,7 @@ from typing import Optional
 import tree_sitter_yaml
 from tree_sitter import Language, Parser, Tree
 
-from .ansible_document import AnsibleDocument, InjectedRegion
+from .ansible_document import AnsibleDocument, InjectedRegion, DefinitionTarget
 
 logger = logging.getLogger(__name__)
 
