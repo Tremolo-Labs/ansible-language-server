@@ -32,7 +32,7 @@
 :ID:       fb9a12cd-cf78-4d43-8130-eef19050a1e9
 :END:
    - [X] [[id:hover-provider][HoverProvider]] - keyword and module docs on hover
-   - [ ] [[id:definition-provider][DefinitionProvider]] - go-to-definition for roles/includes
+   - [X] [[id:definition-provider][DefinitionProvider]] - go-to-definition for roles/includes
    - [ ] [[id:completion-provider][CompletionProvider]] - context-aware completions
 **** TODO add all the other cool providers to this list
 :PROPERTIES:
