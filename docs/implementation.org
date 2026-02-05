@@ -15,7 +15,7 @@ The Python port of ansible-language-server aims:
 :ID:       architecture
 :END:
 The server follows the standard Language Server Protocol architecture, built on [[https://github.com/openlawlibrary/pygls][pygls]].
-*** Server Entry Point
+u*** Server Entry Point
 :PROPERTIES:
 :ID:       server-entry-point
 :END:
@@ -74,6 +74,4 @@ def get_module_docs(module_name: str) -> dict:
     )
     return json.loads(output) if output else {}
 #+end_src
-
-
 

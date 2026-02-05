@@ -166,3 +166,6 @@ for i, node in enumerate(path):
 
 return AnsibleContext.UNKNOWN
 #+end_src
+** TODO set up pipeline to build for each recent version of the stack
+  [2026-02-04 Wed]
+  [[id:99451843-ca6a-4123-abc7-7db9c6e525ad][Implement services]]

@@ -232,8 +232,86 @@ def smart_filter(completion_list: list, trigger_character: Optional[str] = None)
 #+end_src
 
 
+*** Running the Server
+:PROPERTIES:
+:ID:       running-server
+:END:
+
+**** Local Development with uv
+
+[[https://docs.astral.sh/uv/][uv]] is the recommended package manager for local development. It provides fast dependency resolution and virtual environment management.
+
+**Initial Setup:**
+
+#+begin_src shell :tangle no
+# Install uv if not present
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Create virtual environment and install dependencies
+uv sync
+
+# Install dev dependencies
+uv sync --extra dev
+#+end_src
+
+**Running the Server:**
+
+#+begin_src shell :tangle no
+# Run via uv (recommended for development)
+uv run ansible-language-server
+
+# Or run main.py directly
+uv run python main.py
+
+# Run with stdio transport (default, for editor integration)
+uv run ansible-language-server
+
+# Run tests
+uv run pytest
+#+end_src
+
+**Tangling the Source:**
+
+The Python source files are generated from org-mode literate programming files. To regenerate all source from the org files:
+
+#+begin_src shell :tangle no
+# From Emacs: M-x org-babel-tangle on each .org file
+# Or use org-babel-tangle-file from elisp
+#+end_src
+
+**** Entry Point
+
+The =main.py= at project root delegates to the language server module, providing a simple entry point for =uv run python main.py=.
+
+#+begin_src python :tangle ../main.py :mkdirp t
+"""Ansible Language Server - main entry point.
+
+This module provides a simple entry point for running the language server
+via `uv run python main.py` or direct execution.
+"""
+
+from ansible_ls.server import main
+
+if __name__ == "__main__":
+    main()
+#+end_src
+
+**** Editor Configuration
+
+For VS Code, configure the language server path:
+
+#+begin_src json :tangle no
+{
+  "ansible.languageServer.path": "${workspaceFolder}/.venv/bin/ansible-language-server"
+}
+#+end_src
+
+For Emacs with eglot:
+
+#+begin_src elisp :tangle no
+(add-to-list 'eglot-server-programs
+             '(yaml-mode . ("uv" "run" "ansible-language-server")))
+#+end_src
+
 *** Implementation
 documented at [[id:python-port-docs][Python Implementation]]
-*** TODO set up pipeline to build for each recent version of the stack
-  [2026-02-04 Wed]
-  [[id:99451843-ca6a-4123-abc7-7db9c6e525ad][Implement services]]
