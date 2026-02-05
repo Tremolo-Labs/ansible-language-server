@@ -6,7 +6,7 @@
 The Python port of ansible-language-server aims:
 
 1. *Native Ansible Integration* - Import Ansible's internal APIs directly for keyword validation, module discovery, and documentation rather than reimplementing or shelling out
-2. *Modern Tooling* - Use =tree-sitter= for fast, incremental YAML parsing with position tracking instead of slower pure-Python parsers
+2. *Modern Tooling* - Use =tree-sitter= for fast, incremental parsing with position tracking instead of slower pure-Python parsers
 3. *Simplified Architecture* - Replace complex subprocess management with Python library calls (=podman-py=, =importlib.metadata=, =ansible-runner=)
 4. *Better Developer Experience* - Format with =black=, lint with =ruff=, type-check with =mypy=, all working on Python code
 
@@ -42,7 +42,7 @@ if __name__ == "__main__":
     main()
 #+end_src
 ** Data Models
-documented at [[id:6c957ced-4d57-4e5c-8dd4-b99db01bc12f][Data Models]]
+documented at [[id:data-models][Data Models]]
 ** Services
 documented at [[id:services][Services]]
 ** External Tool Integration

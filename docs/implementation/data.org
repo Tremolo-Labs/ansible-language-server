@@ -1,11 +1,7 @@
 * TODO Data Models
 :PROPERTIES:
-:ID:       6c957ced-4d57-4e5c-8dd4-b99db01bc12f
-:END:
-PROPERTIES:
 :ID:       data-models
 :END:
-
 ** TODO Metadata Extraction Script
 :PROPERTIES:
 :ID:       296ff42f-3f7f-4a04-b06a-b07d5b0b46e0

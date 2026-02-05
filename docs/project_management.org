@@ -52,5 +52,3 @@
 - [ ] Handle trigger characters (=:=, =-=)
 - [ ] Implement completion resolve for lazy documentation
 - [ ] Write extensive tests with fixture playbooks
-
-
