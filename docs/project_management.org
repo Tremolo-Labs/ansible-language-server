@@ -10,7 +10,7 @@
 :END:
 
 
-*** NEXT Implement services
+*** DONE Implement services
 :PROPERTIES:
 :ID:       99451843-ca6a-4123-abc7-7db9c6e525ad
 :END:
@@ -19,19 +19,19 @@
      - [X] injection detection for Jinja2 (regex-based, tree optional)
      - [X] injection queries for Jinja2 context (filter vs test vs var)
      - [X] tree-sitter queries for ansible datatypes
-   - [-] [[id:data-models][Data Models]]
+   - [X] [[id:data-models][Data Models]]
      - [X] unified extract + generate script (tools/extract_schema.py)
      - [X] run and verify output
-   - [ ] [[id:settings-service][SettingsManager]] - settings caching and LSP config
-   - [ ] [[id:workspace-service][WorkspaceManager]] - multi-folder context
-   - [ ] [[id:docs-library][DocsLibrary]] - module documentation cache
-   - [ ] [[id:validation-service][ValidationManager]] - ansible-lint integration
+   - [X] [[id:settings-service][SettingsManager]] - settings caching and LSP config
+   - [X] [[id:workspace-service][WorkspaceManager]] - multi-folder context
+   - [X] [[id:docs-library][DocsLibrary]] - module documentation cache (ansible-doc integration)
+   - [X] [[id:validation-service][ValidationManager]] - ansible-lint integration + syntax-check fallback
 
-*** TODO Implement providers
+*** NEXT Implement providers
 :PROPERTIES:
 :ID:       fb9a12cd-cf78-4d43-8130-eef19050a1e9
 :END:
-   - [ ] [[id:hover-provider][HoverProvider]] - keyword and module docs on hover
+   - [X] [[id:hover-provider][HoverProvider]] - keyword and module docs on hover
    - [ ] [[id:definition-provider][DefinitionProvider]] - go-to-definition for roles/includes
    - [ ] [[id:completion-provider][CompletionProvider]] - context-aware completions
 **** TODO add all the other cool providers to this list
