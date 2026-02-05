@@ -73,8 +73,6 @@ class WorkspaceFolderContext:
         """Clean up resources when workspace folder is removed."""
         if self._docs_library:
             self._docs_library.dispose()
-        if self._execution_env:
-            self._execution_env.dispose()
 
 
 class WorkspaceManager:

@@ -284,23 +284,5 @@ class AnsibleDocument:
 
     def _is_likely_module_name(self, key: str) -> bool:
         """Check if a key looks like a module name vs a keyword."""
-        # Import schema to check known keywords
-        try:
-            from ..ansible_schema import ALL_KEYWORDS
-            if key in ALL_KEYWORDS:
-                return False
-        except ImportError:
-            pass
-
-        # Fallback: Known task keywords that aren't modules
-        task_keywords = {
-            "name", "when", "register", "vars", "loop", "with_items",
-            "with_dict", "with_file", "notify", "tags", "become",
-            "become_user", "delegate_to", "ignore_errors", "changed_when",
-            "failed_when", "until", "retries", "delay", "no_log",
-            "environment", "args", "async", "poll", "throttle",
-            # Play-level keywords
-            "hosts", "gather_facts", "strategy", "serial", "max_fail_percentage",
-            "any_errors_fatal", "connection", "collections", "module_defaults",
-        }
-        return key not in task_keywords
+        from ...ansible_schema import ALL_KEYWORDS
+        return key not in ALL_KEYWORDS

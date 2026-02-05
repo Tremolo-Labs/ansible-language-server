@@ -182,8 +182,6 @@ class WorkspaceFolderContext:
         """Clean up resources when workspace folder is removed."""
         if self._docs_library:
             self._docs_library.dispose()
-        if self._execution_env:
-            self._execution_env.dispose()
 
 
 class WorkspaceManager:
@@ -332,14 +330,107 @@ class DocsLibrary:
         )
 
     async def _discover_builtin_modules(self) -> None:
-        """Discover ansible.builtin modules."""
-        # TODO: Use ansible-runner or direct imports to list modules
-        ...
+        """Discover ansible.builtin modules using ansible-doc."""
+        import asyncio
+        import json
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "ansible-doc",
+                "--list",
+                "--type", "module",
+                "--json",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+
+            if proc.returncode != 0 or not stdout:
+                logger.warning(f"ansible-doc failed: {stderr.decode()[:200] if stderr else 'no output'}")
+                return
+
+            modules = json.loads(stdout.decode("utf-8"))
+
+            for name, info in modules.items():
+                # ansible-doc returns both short names and FQCNs
+                # Short names are builtin if they don't have dots
+                if "." not in name:
+                    fqcn = f"ansible.builtin.{name}"
+                    short_name = name
+                elif name.startswith("ansible.builtin."):
+                    fqcn = name
+                    short_name = name.split(".")[-1]
+                else:
+                    # Skip non-builtin modules in this pass
+                    continue
+
+                metadata = ModuleMetadata(
+                    source="builtin",
+                    fqcn=fqcn,
+                    namespace="ansible",
+                    collection="builtin",
+                    name=short_name,
+                )
+                self._modules[fqcn] = metadata
+                self._short_names.setdefault(short_name, []).append(fqcn)
+
+            logger.info(f"Discovered {len(self._modules)} builtin modules")
+
+        except FileNotFoundError:
+            logger.warning("ansible-doc not found - module discovery disabled")
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse ansible-doc output: {e}")
+        except Exception as e:
+            logger.error(f"Module discovery failed: {e}")
 
     async def _discover_collection_modules(self) -> None:
         """Discover modules from installed collections."""
-        # TODO: Scan collection paths for module plugins
-        ...
+        import asyncio
+        import json
+
+        try:
+            # Get all modules including collections
+            proc = await asyncio.create_subprocess_exec(
+                "ansible-doc",
+                "--list",
+                "--type", "module",
+                "--json",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+
+            if proc.returncode != 0 or not stdout:
+                return
+
+            modules = json.loads(stdout.decode("utf-8"))
+
+            for name, info in modules.items():
+                # Skip builtins (handled separately) and non-FQCN entries
+                if "." not in name or name.startswith("ansible.builtin."):
+                    continue
+
+                # Parse FQCN: namespace.collection.module_name
+                parts = name.split(".")
+                if len(parts) >= 3:
+                    namespace = parts[0]
+                    collection = parts[1]
+                    short_name = parts[-1]
+
+                    metadata = ModuleMetadata(
+                        source="collection",
+                        fqcn=name,
+                        namespace=namespace,
+                        collection=collection,
+                        name=short_name,
+                    )
+                    self._modules[name] = metadata
+                    self._short_names.setdefault(short_name, []).append(name)
+
+            logger.info(f"Total modules after collection discovery: {len(self._modules)}")
+
+        except Exception as e:
+            logger.warning(f"Collection module discovery failed: {e}")
 
     def get_module(self, name: str) -> Optional[ModuleMetadata]:
         """Get module metadata by name.
@@ -387,10 +478,69 @@ class DocsLibrary:
         return module.documentation
 
     async def _load_module_docs(self, fqcn: str) -> Optional[ModuleDocumentation]:
-        """Load documentation for a module by FQCN."""
-        # TODO: Use ansible-runner.get_plugin_docs or parse DOCUMENTATION string
-        ...
-        return None
+        """Load documentation for a module by FQCN using ansible-doc."""
+        import asyncio
+        import json
+        from ..models.module import Option
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "ansible-doc",
+                fqcn,
+                "--json",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+
+            if proc.returncode != 0 or not stdout:
+                logger.debug(f"No docs found for {fqcn}")
+                return None
+
+            docs = json.loads(stdout.decode("utf-8"))
+
+            if fqcn not in docs:
+                return None
+
+            doc_data = docs[fqcn].get("doc", {})
+
+            # Parse options into Option objects (dict keyed by name)
+            options: dict[str, Option] = {}
+            for opt_name, opt_data in doc_data.get("options", {}).items():
+                desc = opt_data.get("description", "")
+                if isinstance(desc, list):
+                    desc = "\n".join(desc)
+
+                options[opt_name] = Option(
+                    name=opt_name,
+                    description=desc,
+                    required=opt_data.get("required", False),
+                    type=opt_data.get("type"),
+                    default=opt_data.get("default"),
+                    choices=opt_data.get("choices", []),
+                    aliases=opt_data.get("aliases", []),
+                )
+
+            desc = doc_data.get("description", "")
+            if isinstance(desc, list):
+                desc = "\n".join(desc)
+
+            return ModuleDocumentation(
+                short_description=doc_data.get("short_description"),
+                description=desc,
+                options=options,
+                notes=doc_data.get("notes", []),
+            )
+
+        except FileNotFoundError:
+            logger.warning("ansible-doc not found")
+            return None
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse module docs: {e}")
+            return None
+        except Exception as e:
+            logger.debug(f"Failed to load docs for {fqcn}: {e}")
+            return None
 
     def find_modules(self, prefix: str) -> list[ModuleMetadata]:
         """Find modules matching a prefix (for completion)."""
@@ -528,10 +678,67 @@ class ValidationManager:
     async def _run_syntax_check(
         self, uri: str, content: str
     ) -> list[types.Diagnostic]:
-        """Run ansible-playbook --syntax-check as fallback."""
-        # TODO: Implement syntax check fallback
-        ...
-        return []
+        """Run ansible-playbook --syntax-check as fallback validation."""
+        import asyncio
+        import re
+
+        parsed = urlparse(uri)
+        file_path = Path(parsed.path)
+
+        # Only syntax check playbook files
+        if file_path.suffix not in (".yml", ".yaml"):
+            return []
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "ansible-playbook",
+                "--syntax-check",
+                str(file_path),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+
+            diagnostics = []
+            if proc.returncode != 0:
+                error_text = stderr.decode("utf-8") if stderr else stdout.decode("utf-8")
+
+                # Try to parse line number from error message
+                # Common format: "ERROR! ... at line X, column Y"
+                line = 0
+                column = 0
+                line_match = re.search(r"line\s+(\d+)", error_text, re.IGNORECASE)
+                col_match = re.search(r"column\s+(\d+)", error_text, re.IGNORECASE)
+
+                if line_match:
+                    line = int(line_match.group(1)) - 1  # 0-indexed
+                if col_match:
+                    column = int(col_match.group(1)) - 1
+
+                # Clean up error message
+                message = error_text.strip()
+                # Remove ANSI color codes if present
+                message = re.sub(r"\x1b\[[0-9;]*m", "", message)
+
+                diagnostic = types.Diagnostic(
+                    range=types.Range(
+                        start=types.Position(line=line, character=column),
+                        end=types.Position(line=line, character=column + 100),
+                    ),
+                    message=message,
+                    severity=types.DiagnosticSeverity.Error,
+                    source="ansible-playbook",
+                )
+                diagnostics.append(diagnostic)
+
+            return diagnostics
+
+        except FileNotFoundError:
+            logger.warning("ansible-playbook not found - syntax check disabled")
+            return []
+        except Exception as e:
+            logger.error(f"Syntax check failed: {e}")
+            return []
 
     def _map_severity(self, severity: str) -> types.DiagnosticSeverity:
         """Map ansible-lint severity to LSP severity."""
@@ -837,7 +1044,7 @@ class AnsibleDocument:
         self, injection: InjectedRegion, line: int, column: int
     ) -> AnsibleContext:
         """Fallback regex-based Jinja2 context detection."""
-        text = injection.text
+        text = injection.original_text
         # Find cursor offset within injection
         lines = text.split('\n')
         rel_line = line - injection.start_point[0]
@@ -884,23 +1091,34 @@ class AnsibleDocument:
         for i, node in enumerate(reversed(path)):
             node_type = node.type
 
+            # Check for block_mapping - look at all keys to identify context
+            if node_type == "block_mapping":
+                keys = self._get_mapping_keys(node)
+
+                # Use required fields to identify context type
+                # Play: has 'hosts' key
+                if "hosts" in keys:
+                    return AnsibleContext.PLAY
+                # Block: has 'block' key
+                if "block" in keys:
+                    return AnsibleContext.BLOCK
+                # Role definition: has 'role' key
+                if "role" in keys:
+                    return AnsibleContext.ROLE
+
             # Check for block_mapping_pair which contains key: value
             if node_type == "block_mapping_pair":
                 key_node = node.child_by_field_name("key")
                 if key_node:
                     key_text = self._get_node_text(key_node)
 
-                    # Task-level keywords
-                    if key_text == "tasks" or key_text == "pre_tasks" or key_text == "post_tasks":
+                    # Task-level keywords - we're inside a task list
+                    if key_text in ("tasks", "pre_tasks", "post_tasks"):
                         return AnsibleContext.TASK
                     if key_text == "handlers":
                         return AnsibleContext.HANDLER
-                    if key_text == "block":
-                        return AnsibleContext.BLOCK
                     if key_text == "roles":
                         return AnsibleContext.ROLE
-                    if key_text == "hosts":
-                        return AnsibleContext.PLAY
 
                     # Check if this looks like a module invocation
                     # (key that's not a known keyword, with dict/value after)
@@ -913,21 +1131,24 @@ class AnsibleDocument:
 
         return AnsibleContext.UNKNOWN
 
+    def _get_mapping_keys(self, mapping_node: "Node") -> set[str]:
+        """Get all key names from a block_mapping node."""
+        keys = set()
+        for child in mapping_node.children:
+            if child.type == "block_mapping_pair":
+                key_node = child.child_by_field_name("key")
+                if key_node:
+                    keys.add(self._get_node_text(key_node))
+        return keys
+
     def _get_node_text(self, node: "Node") -> str:
         """Extract text content from a node."""
         return self.content[node.start_byte:node.end_byte]
 
     def _is_likely_module_name(self, key: str) -> bool:
         """Check if a key looks like a module name vs a keyword."""
-        # Known task keywords that aren't modules
-        task_keywords = {
-            "name", "when", "register", "vars", "loop", "with_items",
-            "with_dict", "with_file", "notify", "tags", "become",
-            "become_user", "delegate_to", "ignore_errors", "changed_when",
-            "failed_when", "until", "retries", "delay", "no_log",
-            "environment", "args", "async", "poll", "throttle",
-        }
-        return key not in task_keywords
+        from ...ansible_schema import ALL_KEYWORDS
+        return key not in ALL_KEYWORDS
 #+end_src
 
 #+begin_src python :tangle ../../src/ansible_ls/services/ansible_parser/parser_service.py :mkdirp t

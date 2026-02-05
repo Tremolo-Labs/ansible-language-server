@@ -64,14 +64,107 @@ class DocsLibrary:
         )
 
     async def _discover_builtin_modules(self) -> None:
-        """Discover ansible.builtin modules."""
-        # TODO: Use ansible-runner or direct imports to list modules
-        ...
+        """Discover ansible.builtin modules using ansible-doc."""
+        import asyncio
+        import json
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "ansible-doc",
+                "--list",
+                "--type", "module",
+                "--json",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+
+            if proc.returncode != 0 or not stdout:
+                logger.warning(f"ansible-doc failed: {stderr.decode()[:200] if stderr else 'no output'}")
+                return
+
+            modules = json.loads(stdout.decode("utf-8"))
+
+            for name, info in modules.items():
+                # ansible-doc returns both short names and FQCNs
+                # Short names are builtin if they don't have dots
+                if "." not in name:
+                    fqcn = f"ansible.builtin.{name}"
+                    short_name = name
+                elif name.startswith("ansible.builtin."):
+                    fqcn = name
+                    short_name = name.split(".")[-1]
+                else:
+                    # Skip non-builtin modules in this pass
+                    continue
+
+                metadata = ModuleMetadata(
+                    source="builtin",
+                    fqcn=fqcn,
+                    namespace="ansible",
+                    collection="builtin",
+                    name=short_name,
+                )
+                self._modules[fqcn] = metadata
+                self._short_names.setdefault(short_name, []).append(fqcn)
+
+            logger.info(f"Discovered {len(self._modules)} builtin modules")
+
+        except FileNotFoundError:
+            logger.warning("ansible-doc not found - module discovery disabled")
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse ansible-doc output: {e}")
+        except Exception as e:
+            logger.error(f"Module discovery failed: {e}")
 
     async def _discover_collection_modules(self) -> None:
         """Discover modules from installed collections."""
-        # TODO: Scan collection paths for module plugins
-        ...
+        import asyncio
+        import json
+
+        try:
+            # Get all modules including collections
+            proc = await asyncio.create_subprocess_exec(
+                "ansible-doc",
+                "--list",
+                "--type", "module",
+                "--json",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+
+            if proc.returncode != 0 or not stdout:
+                return
+
+            modules = json.loads(stdout.decode("utf-8"))
+
+            for name, info in modules.items():
+                # Skip builtins (handled separately) and non-FQCN entries
+                if "." not in name or name.startswith("ansible.builtin."):
+                    continue
+
+                # Parse FQCN: namespace.collection.module_name
+                parts = name.split(".")
+                if len(parts) >= 3:
+                    namespace = parts[0]
+                    collection = parts[1]
+                    short_name = parts[-1]
+
+                    metadata = ModuleMetadata(
+                        source="collection",
+                        fqcn=name,
+                        namespace=namespace,
+                        collection=collection,
+                        name=short_name,
+                    )
+                    self._modules[name] = metadata
+                    self._short_names.setdefault(short_name, []).append(name)
+
+            logger.info(f"Total modules after collection discovery: {len(self._modules)}")
+
+        except Exception as e:
+            logger.warning(f"Collection module discovery failed: {e}")
 
     def get_module(self, name: str) -> Optional[ModuleMetadata]:
         """Get module metadata by name.
@@ -119,10 +212,69 @@ class DocsLibrary:
         return module.documentation
 
     async def _load_module_docs(self, fqcn: str) -> Optional[ModuleDocumentation]:
-        """Load documentation for a module by FQCN."""
-        # TODO: Use ansible-runner.get_plugin_docs or parse DOCUMENTATION string
-        ...
-        return None
+        """Load documentation for a module by FQCN using ansible-doc."""
+        import asyncio
+        import json
+        from ..models.module import Option
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "ansible-doc",
+                fqcn,
+                "--json",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+
+            if proc.returncode != 0 or not stdout:
+                logger.debug(f"No docs found for {fqcn}")
+                return None
+
+            docs = json.loads(stdout.decode("utf-8"))
+
+            if fqcn not in docs:
+                return None
+
+            doc_data = docs[fqcn].get("doc", {})
+
+            # Parse options into Option objects (dict keyed by name)
+            options: dict[str, Option] = {}
+            for opt_name, opt_data in doc_data.get("options", {}).items():
+                desc = opt_data.get("description", "")
+                if isinstance(desc, list):
+                    desc = "\n".join(desc)
+
+                options[opt_name] = Option(
+                    name=opt_name,
+                    description=desc,
+                    required=opt_data.get("required", False),
+                    type=opt_data.get("type"),
+                    default=opt_data.get("default"),
+                    choices=opt_data.get("choices", []),
+                    aliases=opt_data.get("aliases", []),
+                )
+
+            desc = doc_data.get("description", "")
+            if isinstance(desc, list):
+                desc = "\n".join(desc)
+
+            return ModuleDocumentation(
+                short_description=doc_data.get("short_description"),
+                description=desc,
+                options=options,
+                notes=doc_data.get("notes", []),
+            )
+
+        except FileNotFoundError:
+            logger.warning("ansible-doc not found")
+            return None
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse module docs: {e}")
+            return None
+        except Exception as e:
+            logger.debug(f"Failed to load docs for {fqcn}: {e}")
+            return None
 
     def find_modules(self, prefix: str) -> list[ModuleMetadata]:
         """Find modules matching a prefix (for completion)."""
