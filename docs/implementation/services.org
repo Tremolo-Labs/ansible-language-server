@@ -855,9 +855,9 @@ https://tree-sitter.github.io/tree-sitter/using-parsers/3-advanced-parsing.html#
 """Ansible parser package - tree-sitter based parsing for Ansible documents."""
 
 from .parser_service import ParserService
-from .ansible_document import AnsibleDocument, AnsibleContext
+from .ansible_document import AnsibleDocument, AnsibleContext, DefinitionTarget
 
-__all__ = ["ParserService", "AnsibleDocument", "AnsibleContext"]
+__all__ = ["ParserService", "AnsibleDocument", "AnsibleContext", "DefinitionTarget"]
 #+end_src
 
 #+begin_src python :tangle ../../src/ansible_ls/services/ansible_parser/ansible_document.py :mkdirp t
@@ -890,6 +890,11 @@ class AnsibleContext(Enum):
     JINJA_FILTER = auto()
     JINJA_TEST = auto()
     JINJA_VARIABLE = auto()
+    # Definition target contexts
+    ROLE_NAME = auto()        # In roles: list or role: key value
+    INCLUDE_PATH = auto()     # include_tasks/import_tasks value
+    VARS_FILE_PATH = auto()   # vars_files or include_vars value
+    HANDLER_REF = auto()      # notify: value referencing handler
 
 
 @dataclass
@@ -902,6 +907,14 @@ class InjectedRegion:
     language: str
     tree: Optional["Tree"] = None
     original_text: str = ""
+
+
+@dataclass
+class DefinitionTarget:
+    """A target that can be resolved to a definition location."""
+    kind: AnsibleContext
+    name: str
+    range: tuple[tuple[int, int], tuple[int, int]]  # (start_point, end_point)
 
 
 @dataclass
@@ -1149,6 +1162,143 @@ class AnsibleDocument:
         """Check if a key looks like a module name vs a keyword."""
         from ...ansible_schema import ALL_KEYWORDS
         return key not in ALL_KEYWORDS
+
+    # ========================================================================
+    # Definition target detection
+    # ========================================================================
+
+    def get_definition_target_at_position(
+        self, line: int, column: int
+    ) -> Optional[DefinitionTarget]:
+        """Get definition target at position if cursor is on a resolvable reference.
+
+        Returns DefinitionTarget for:
+        - Role names in roles: list or role: key
+        - File paths in include_tasks/import_tasks
+        - Handler names in notify:
+
+        Returns None if position is not on a definition target.
+        """
+        path = self.get_path_to_position(line, column)
+        return self._analyze_definition_target(path)
+
+    def _analyze_definition_target(
+        self, path: list["Node"]
+    ) -> Optional[DefinitionTarget]:
+        """Analyze YAML path for definition targets."""
+        if not path:
+            return None
+
+        # Get the deepest node (likely the value we're on)
+        deepest = path[-1]
+
+        # Walk up to find context
+        for i, node in enumerate(reversed(path)):
+            # Check for block_mapping_pair to get key context
+            if node.type == "block_mapping_pair":
+                key_node = node.child_by_field_name("key")
+                value_node = node.child_by_field_name("value")
+
+                if not key_node:
+                    continue
+
+                key_text = self._get_node_text(key_node)
+
+                # include_tasks / import_tasks / include_role / import_role
+                if key_text in ("include_tasks", "import_tasks", "include_role", "import_role"):
+                    if value_node:
+                        value_text = self._get_node_text(value_node).strip().strip('"\'')
+                        # Skip dynamic paths with Jinja2
+                        if "{{" in value_text:
+                            return None
+                        if key_text in ("include_role", "import_role"):
+                            return DefinitionTarget(
+                                kind=AnsibleContext.ROLE_NAME,
+                                name=value_text,
+                                range=(value_node.start_point, value_node.end_point),
+                            )
+                        return DefinitionTarget(
+                            kind=AnsibleContext.INCLUDE_PATH,
+                            name=value_text,
+                            range=(value_node.start_point, value_node.end_point),
+                        )
+
+                # vars_files / include_vars
+                if key_text in ("vars_files", "include_vars"):
+                    if value_node:
+                        value_text = self._get_node_text(value_node).strip().strip('"\'')
+                        if "{{" in value_text:
+                            return None
+                        return DefinitionTarget(
+                            kind=AnsibleContext.VARS_FILE_PATH,
+                            name=value_text,
+                            range=(value_node.start_point, value_node.end_point),
+                        )
+
+                # role: key in roles list item
+                if key_text == "role":
+                    if value_node:
+                        value_text = self._get_node_text(value_node).strip().strip('"\'')
+                        return DefinitionTarget(
+                            kind=AnsibleContext.ROLE_NAME,
+                            name=value_text,
+                            range=(value_node.start_point, value_node.end_point),
+                        )
+
+            # Check for block_sequence_item under specific keys
+            if node.type == "block_sequence_item":
+                # Look for parent block_mapping_pair to get context
+                parent_pair = self._find_parent_mapping_pair(path, i)
+                if parent_pair:
+                    key_node = parent_pair.child_by_field_name("key")
+                    if key_node:
+                        key_text = self._get_node_text(key_node)
+
+                        # roles: list - simple string role names
+                        if key_text == "roles":
+                            # Get the text of this sequence item
+                            item_text = self._get_node_text(deepest).strip().strip('"\'')
+                            if item_text and "{{" not in item_text:
+                                return DefinitionTarget(
+                                    kind=AnsibleContext.ROLE_NAME,
+                                    name=item_text,
+                                    range=(deepest.start_point, deepest.end_point),
+                                )
+
+                        # notify: list - handler references
+                        if key_text == "notify":
+                            item_text = self._get_node_text(deepest).strip().strip('"\'')
+                            if item_text:
+                                return DefinitionTarget(
+                                    kind=AnsibleContext.HANDLER_REF,
+                                    name=item_text,
+                                    range=(deepest.start_point, deepest.end_point),
+                                )
+
+                        # vars_files: list
+                        if key_text == "vars_files":
+                            item_text = self._get_node_text(deepest).strip().strip('"\'')
+                            if item_text and "{{" not in item_text:
+                                return DefinitionTarget(
+                                    kind=AnsibleContext.VARS_FILE_PATH,
+                                    name=item_text,
+                                    range=(deepest.start_point, deepest.end_point),
+                                )
+
+        return None
+
+    def _find_parent_mapping_pair(
+        self, path: list["Node"], current_idx: int
+    ) -> Optional["Node"]:
+        """Find the parent block_mapping_pair for a node in the path."""
+        # current_idx is from reversed iteration, convert to forward index
+        forward_idx = len(path) - 1 - current_idx
+
+        # Look backwards in the original path
+        for j in range(forward_idx - 1, -1, -1):
+            if path[j].type == "block_mapping_pair":
+                return path[j]
+        return None
 #+end_src
 
 #+begin_src python :tangle ../../src/ansible_ls/services/ansible_parser/parser_service.py :mkdirp t
@@ -1165,7 +1315,7 @@ from typing import Optional
 import tree_sitter_yaml
 from tree_sitter import Language, Parser, Tree
 
-from .ansible_document import AnsibleDocument, InjectedRegion
+from .ansible_document import AnsibleDocument, InjectedRegion, DefinitionTarget
 
 logger = logging.getLogger(__name__)
 
