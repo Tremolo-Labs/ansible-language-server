@@ -298,6 +298,16 @@ class AnsibleDocument:
                             return AnsibleContext.MODULE_OPTIONS
                         return AnsibleContext.MODULE_NAME
 
+        # Fallback: check if we're in a top-level sequence (play list)
+        # Playbooks are lists of plays, so any mapping in a document-level
+        # sequence is a play definition (even if 'hosts' key is not yet present)
+        for i, node in enumerate(path):
+            if node.type == "block_sequence":
+                # Check if parent is block_node and grandparent is document
+                if i >= 2 and path[i-1].type == "block_node" and path[i-2].type == "document":
+                    # We're in a top-level sequence - assume PLAY context
+                    return AnsibleContext.PLAY
+
         return AnsibleContext.UNKNOWN
 
     def _get_mapping_keys(self, mapping_node: "Node") -> set[str]:
@@ -400,6 +410,17 @@ class AnsibleDocument:
                             name=value_text,
                             range=(value_node.start_point, value_node.end_point),
                         )
+
+                # notify: scalar - handler reference
+                if key_text == "notify":
+                    if value_node:
+                        value_text = self._get_node_text(value_node).strip().strip('"\'')
+                        if value_text:
+                            return DefinitionTarget(
+                                kind=AnsibleContext.HANDLER_REF,
+                                name=value_text,
+                                range=(value_node.start_point, value_node.end_point),
+                            )
 
             # Check for block_sequence_item under specific keys
             if node.type == "block_sequence_item":

@@ -480,7 +480,7 @@ def _find_handler_name_in_list(
     """Search handler list for matching name."""
     # node should be block_sequence or similar
     for child in node.children:
-        if child.type in ("block_sequence_item", "block_node", "block_mapping"):
+        if child.type in ("block_sequence", "block_sequence_item", "block_node", "block_mapping"):
             # Look for name: key in this handler
             result = _find_name_key(child, handler_name, content)
             if result:
@@ -1228,25 +1228,25 @@ def _keyword_completions(
         List of completion items for available keywords
     """
     items = []
-    for name, field in schema.fields.items():
-        if name in existing_keys:
+    for field in schema.fields:
+        if field.name in existing_keys:
             continue  # Skip already-provided keys
 
         # Priority: required fields first, then 'name', then alphabetical
         if field.required:
             sort_prefix = "0"
-        elif name == "name":
+        elif field.name == "name":
             sort_prefix = "1"
         else:
             sort_prefix = "2"
 
         item = types.CompletionItem(
-            label=name,
+            label=field.name,
             kind=types.CompletionItemKind.Property,
             detail=f"{schema.name} keyword",
             documentation=_format_field_doc(field),
-            insert_text=f"{name}: ",
-            sort_text=f"{sort_prefix}{name}",
+            insert_text=f"{field.name}: ",
+            sort_text=f"{sort_prefix}{field.name}",
         )
         items.append(item)
 
@@ -1451,7 +1451,10 @@ def _variable_completions(prefix: Optional[str]) -> list[types.CompletionItem]:
     return items
 #+end_src
 
-*** Tests
+*** TODO Tests
+:PROPERTIES:
+:ID:       8b3f0981-c980-4f21-a8e8-b946bad23186
+:END:
 
 #+begin_src python :tangle ../../tests/providers/test_completion_provider.py :mkdirp t
 """Tests for CompletionProvider.

@@ -211,7 +211,7 @@ def _find_handler_name_in_list(
     """Search handler list for matching name."""
     # node should be block_sequence or similar
     for child in node.children:
-        if child.type in ("block_sequence_item", "block_node", "block_mapping"):
+        if child.type in ("block_sequence", "block_sequence_item", "block_node", "block_mapping"):
             # Look for name: key in this handler
             result = _find_name_key(child, handler_name, content)
             if result:

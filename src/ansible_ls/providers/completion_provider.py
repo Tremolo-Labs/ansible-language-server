@@ -94,25 +94,25 @@ def _keyword_completions(
         List of completion items for available keywords
     """
     items = []
-    for name, field in schema.fields.items():
-        if name in existing_keys:
+    for field in schema.fields:
+        if field.name in existing_keys:
             continue  # Skip already-provided keys
 
         # Priority: required fields first, then 'name', then alphabetical
         if field.required:
             sort_prefix = "0"
-        elif name == "name":
+        elif field.name == "name":
             sort_prefix = "1"
         else:
             sort_prefix = "2"
 
         item = types.CompletionItem(
-            label=name,
+            label=field.name,
             kind=types.CompletionItemKind.Property,
             detail=f"{schema.name} keyword",
             documentation=_format_field_doc(field),
-            insert_text=f"{name}: ",
-            sort_text=f"{sort_prefix}{name}",
+            insert_text=f"{field.name}: ",
+            sort_text=f"{sort_prefix}{field.name}",
         )
         items.append(item)
 
