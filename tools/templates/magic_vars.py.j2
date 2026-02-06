@@ -1,0 +1,27 @@
+"""Magic variables - auto-generated from Ansible source.
+
+DO NOT EDIT. Regenerate with: python tools/extract_schema.py
+"""
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class MagicVariable:
+    """An Ansible magic variable."""
+    name: str
+    scope: str
+    description: str = ""
+
+
+MAGIC_VARS: dict[str, MagicVariable] = {
+{%- for name, info in magic_variables | dictsort %}
+    {{ name | repr }}: MagicVariable({{ name | repr }}, {{ info.scope | repr }}, {{ info.description | replace('"', '\\"') | repr }}),
+{%- endfor %}
+}
+
+MAGIC_VAR_NAMES: frozenset[str] = frozenset(MAGIC_VARS.keys())
+
+
+def is_magic_variable(name: str) -> bool:
+    return name in MAGIC_VAR_NAMES

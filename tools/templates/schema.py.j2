@@ -1,0 +1,93 @@
+"""Ansible type schemas - auto-generated from Ansible source.
+
+Each TypeSchema describes the structure of an Ansible datatype
+(play, task, block, role) with field definitions.
+
+DO NOT EDIT. Regenerate with: python tools/extract_schema.py
+"""
+
+from dataclasses import dataclass
+from functools import cached_property
+from typing import Any, Optional
+
+
+@dataclass(frozen=True, slots=True)
+class FieldDef:
+    """Definition of a field in an Ansible datatype."""
+    name: str
+    isa: Optional[str] = None
+    required: bool = False
+    default: Any = None
+    listof: Optional[str] = None
+    alias: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class TypeSchema:
+    """Schema for an Ansible datatype (play, task, block, role)."""
+    name: str
+    fields: tuple[FieldDef, ...]
+
+    @cached_property
+    def field_names(self) -> frozenset[str]:
+        """All valid field names for this type."""
+        return frozenset(f.name for f in self.fields)
+
+    @cached_property
+    def required_fields(self) -> frozenset[str]:
+        """Fields that must be present (fingerprint for identification)."""
+        return frozenset(f.name for f in self.fields if f.required)
+
+    @cached_property
+    def field_map(self) -> dict[str, FieldDef]:
+        """Lookup field by name."""
+        return {f.name: f for f in self.fields}
+
+    def __contains__(self, name: str) -> bool:
+        return name in self.field_names
+
+    def __getitem__(self, name: str) -> FieldDef:
+        return self.field_map[name]
+
+    def get(self, name: str) -> Optional[FieldDef]:
+        return self.field_map.get(name)
+
+    def matches(self, keys: set[str]) -> bool:
+        """Check if keys contain all required fields (fingerprint match)."""
+        return self.required_fields <= keys
+
+
+{% for ctx_name, fields in keyword_metadata.items() %}
+{{ ctx_name | upper }} = TypeSchema(
+    name="{{ ctx_name }}",
+    fields=(
+{%- for name, info in fields | dictsort %}
+        FieldDef({{ name | repr }}, {{ info.isa | repr }}, {{ info.required }}, {{ info.default | repr }}, {{ info.listof | repr }}, {{ info.alias | repr }}),
+{%- endfor %}
+    ),
+)
+
+{% endfor %}
+
+SCHEMAS: dict[str, TypeSchema] = {
+{%- for ctx_name in keyword_metadata %}
+    "{{ ctx_name }}": {{ ctx_name | upper }},
+{%- endfor %}
+}
+
+ALL_KEYWORDS: frozenset[str] = frozenset().union(*(s.field_names for s in SCHEMAS.values()))
+
+
+def identify_context(keys: set[str]) -> Optional[str]:
+    """Identify context type from keys using required field fingerprints."""
+    for schema in (PLAY, BLOCK, ROLE):
+        if schema.matches(keys):
+            return schema.name
+    if keys & TASK.field_names:
+        return "task"
+    return None
+
+
+def get_schema(name: str) -> Optional[TypeSchema]:
+    """Get schema by name."""
+    return SCHEMAS.get(name)

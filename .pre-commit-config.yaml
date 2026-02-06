@@ -17,6 +17,19 @@ exclude: >
     .*.svg
   )$
 repos:
+  # ============================================================
+  # Python Hooks
+  # ============================================================
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # ============================================================
+  # Shell Hooks
+  # ============================================================
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.9.0.6
     hooks:
@@ -25,6 +38,10 @@ repos:
           - --color=always
           - -e
           - SC1091
+
+  # ============================================================
+  # Local Hooks
+  # ============================================================
   - repo: local
     hooks:
       - id: npm-ci
@@ -53,11 +70,16 @@ repos:
         language: system
         files: "codecov.yml"
         pass_filenames: false
+
+  # ============================================================
+  # General Hooks
+  # ============================================================
   - repo: https://github.com/streetsidesoftware/cspell-cli
     rev: v8.3.0
     hooks:
       - id: cspell
         name: Spell check with cspell
+
   - repo: https://github.com/pre-commit/pre-commit-hooks.git
     rev: v4.5.0
     hooks:
@@ -88,6 +110,10 @@ repos:
 
       - id: debug-statements
         language_version: python3
+
+  # ============================================================
+  # Formatting Hooks
+  # ============================================================
   - repo: https://github.com/pre-commit/mirrors-prettier
     # keep it before markdownlint and eslint
     rev: "v4.0.0-alpha.8"
@@ -95,6 +121,7 @@ repos:
       - id: prettier
         additional_dependencies:
           - prettier
+
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: v0.39.0
     hooks:
@@ -104,6 +131,10 @@ repos:
             docs/changelog-fragments\.d/\d+\.\w+\.md|
             docs/settings.md
           $
+
+  # ============================================================
+  # TypeScript Hooks (Legacy)
+  # ============================================================
   - repo: https://github.com/pre-commit/mirrors-eslint
     rev: v9.0.0-alpha.2
     hooks:

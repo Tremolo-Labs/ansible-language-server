@@ -23,12 +23,93 @@ tasks:
       - task: package
       - task: docs
       - echo Done {{.VERSION}}!
+
+  # ============================================================
+  # Python Language Server Tasks
+  # ============================================================
+
+  py:setup:
+    desc: Install Python dependencies with uv
+    run: once
+    cmds:
+      - uv sync --extra dev
+    sources:
+      - pyproject.toml
+      - uv.lock
+    generates:
+      - .venv/pyvenv.cfg
+
+  py:test:
+    desc: Run Python test suite
+    deps:
+      - py:setup
+    cmds:
+      - uv run pytest -v
+    sources:
+      - src/**/*.py
+      - tests/**/*.py
+
+  py:test-cov:
+    desc: Run Python tests with coverage
+    deps:
+      - py:setup
+    cmds:
+      - uv run pytest --cov=ansible_ls --cov-report=term-missing --cov-report=xml
+
+  py:lint:
+    desc: Lint Python code with ruff
+    deps:
+      - py:setup
+    cmds:
+      - uv run ruff check src tests
+      - uv run ruff format --check src tests
+
+  py:format:
+    desc: Format Python code with ruff
+    deps:
+      - py:setup
+    cmds:
+      - uv run ruff format src tests
+      - uv run ruff check --fix src tests
+
+  py:typecheck:
+    desc: Type-check Python code with mypy
+    deps:
+      - py:setup
+    cmds:
+      - uv run mypy src
+
+  py:all:
+    desc: Run all Python checks (lint, typecheck, test)
+    cmds:
+      - task: py:lint
+      - task: py:typecheck
+      - task: py:test
+
+  py:build:
+    desc: Build Python wheel
+    deps:
+      - py:setup
+    cmds:
+      - uv build
+    sources:
+      - src/**/*.py
+      - pyproject.toml
+    generates:
+      - dist/*.whl
+      - dist/*.tar.gz
+
+  # ============================================================
+  # TypeScript Language Server Tasks (Legacy)
+  # ============================================================
+
   vscode:
     desc: Run vscode-ansible tests using current code from ALS
     deps:
       - setup
     cmds:
       - ./tools/vscode.sh
+
   docs:
     desc: Build the documentation
     deps:
@@ -41,7 +122,7 @@ tasks:
       - "source {{.VIRTUAL_ENV}}/bin/activate && mkdocs build --strict"
 
   setup:
-    desc: Install dependencies
+    desc: Install dependencies (TypeScript)
     run: once
     env:
       # used inside test-setup.sh
@@ -58,8 +139,9 @@ tasks:
       - .config/**/*.*
     generates:
       - out/log/manifest.yml
+
   build:
-    desc: Build the project
+    desc: Build the project (TypeScript)
     deps:
       - setup
     cmds:
@@ -71,6 +153,7 @@ tasks:
       - test/**/*.*
       - tsconfig.json
       - webpack.config.js
+
   deps:
     desc: Update dependencies
     deps:
@@ -88,8 +171,9 @@ tasks:
       - npx ncu -u --dep dev
       # running install after ncu is needed in order to update the lock file
       - npm install
+
   lint:
-    desc: Lint the project
+    desc: Lint the project (all languages)
     deps:
       - setup
     env:
@@ -107,7 +191,9 @@ tasks:
       - images/**/*.*
       - src/**/*.*
       - test/**/*.*
+      - tests/**/*.*
       - tools/**/*.*
+
   .test:
     # Keep the desc empty to hide entry when listing
     # desc: Run all tests
@@ -125,11 +211,13 @@ tasks:
         command -v ansible-lint &&
         npm run test
     interactive: true
+
   test:
     desc: Run all tests using node (same version as vscode)
     cmds:
       - bash -c 'asdf local nodejs latest:18 latest:$(asdf nodejs resolve lts)'
       - task: .test
+
   test-node-lts:
     desc: Run all tests using node-lts (future)
     cmds:
@@ -139,8 +227,9 @@ tasks:
       - node --version
       # restore implicit node version
       - bash -c 'asdf local nodejs latest:18 latest:$(asdf nodejs resolve lts)'
+
   test-with-ee:
-    desc: Run only ee tests
+    desc: Run only ee tests (TypeScript)
     deps:
       - setup
     cmds:
@@ -148,8 +237,9 @@ tasks:
         source {{.VIRTUAL_ENV}}/bin/activate &&
         bash -c 'npm run test-with-ee'
     interactive: true
+
   test-without-ee:
-    desc: Run only non-ee tests
+    desc: Run only non-ee tests (TypeScript)
     deps:
       - setup
     cmds:
@@ -157,6 +247,7 @@ tasks:
         source {{.VIRTUAL_ENV}}/bin/activate &&
         bash -c 'npm run test-without-ee'
     interactive: true
+
   package:
     desc: Package extension
     deps:
@@ -172,6 +263,7 @@ tasks:
       - rm -f *.tgz
       - bash -c 'npm pack'
     silent: false
+
   pr:
     desc: Opens a pull request using gh
     deps:
@@ -179,6 +271,7 @@ tasks:
     cmds:
       - gh pr create
     interactive: true
+
   release:
     desc: Create a new release (used by CI)
     deps:

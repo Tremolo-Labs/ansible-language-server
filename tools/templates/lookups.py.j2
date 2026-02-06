@@ -1,0 +1,39 @@
+"""Lookup plugins - auto-generated from Ansible source.
+
+DO NOT EDIT. Regenerate with: python tools/extract_schema.py
+"""
+
+from dataclasses import dataclass
+from typing import Any, Optional
+
+
+@dataclass(frozen=True, slots=True)
+class LookupOption:
+    """An option for a lookup plugin."""
+    name: str
+    description: str = ""
+    type: str = "string"
+    required: bool = False
+    default: Any = None
+
+
+@dataclass(frozen=True)
+class LookupPlugin:
+    """An Ansible lookup plugin."""
+    fqcn: str
+    short_name: str
+    options: tuple[LookupOption, ...] = ()
+    aliases: tuple[str, ...] = ()
+
+
+LOOKUPS: dict[str, LookupPlugin] = {
+{%- for fqcn, info in lookups | dictsort %}
+    {{ info.short_name | repr }}: LookupPlugin({{ fqcn | repr }}, {{ info.short_name | repr }}, (), {{ info.aliases | default([]) | tuple | repr }}),
+{%- endfor %}
+}
+
+LOOKUP_NAMES: frozenset[str] = frozenset(LOOKUPS.keys())
+
+
+def is_valid_lookup(name: str) -> bool:
+    return name in LOOKUP_NAMES

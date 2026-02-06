@@ -1,0 +1,1081 @@
+* ansible language server
+
+** Project Configuration
+:PROPERTIES:
+:ID:       project-configuration
+:END:
+*** pyproject.toml
+
+#+begin_src toml :tangle ../pyproject.toml
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ansible-language-server"
+version = "0.1.0"
+description = "Language Server Protocol implementation for Ansible"
+requires-python = ">=3.10"
+readme = "README.md"
+license = {text = "GPL3"}
+dependencies = [
+    "pygls>=1.3.0",
+    "ruamel.yaml>=0.18.0",
+    "attrs>=23.0.0",
+    "tree-sitter>=0.23.0",
+    "lsprotocol>=2025.0.0",
+    "ansible-runner>=2.4.0",
+    "tree-sitter-yaml>=0.7.2",
+    "tree-sitter-jinja3==0.11.0",
+    "ansible>=10.7.0",
+    "jinja2>=3.1.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.3.0",
+    "mypy>=1.8.0",
+    "thefuzz>=0.22.0",
+]
+
+[project.scripts]
+ansible-language-server = "ansible_ls.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ansible_ls"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+
+[tool.mypy]
+strict = true
+#+end_src
+
+*** Package Initialization
+:PROPERTIES:
+:ID:       package-init
+:END:
+
+#+begin_src python :tangle ../src/ansible_ls/__init__.py :mkdirp t
+"""Ansible Language Server - Python implementation using pygls and tree-sitter."""
+
+__version__ = "0.1.0"
+#+end_src
+
+
+
+*** Test Infrastructure
+:PROPERTIES:
+:ID:       test-infrastructure
+:END:
+
+Port of =test/helper.ts= to pytest fixtures and utilities.
+
+#+begin_src python :tangle ../tests/conftest.py :mkdirp t
+"""Pytest configuration and shared fixtures for ansible-language-server tests."""
+
+import os
+import sys
+from pathlib import Path
+from typing import Optional
+
+import pytest
+from lsprotocol import types
+
+# Add src to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+# Fixture paths (mirroring TypeScript helper.ts)
+FIXTURES_BASE_PATH = Path(__file__).parent / "fixtures"
+ANSIBLE_COLLECTIONS_FIXTURES_BASE_PATH = FIXTURES_BASE_PATH / "common" / "collections"
+ANSIBLE_ADJACENT_COLLECTIONS_PATH = Path("playbook_adjacent_collection") / "collections"
+ANSIBLE_CONFIG_FILE = FIXTURES_BASE_PATH / "completion" / "ansible.cfg"
+
+
+@pytest.fixture
+def fixtures_path() -> Path:
+    """Return the base fixtures path."""
+    return FIXTURES_BASE_PATH
+
+
+@pytest.fixture
+def collections_path() -> Path:
+    """Return the Ansible collections fixtures path."""
+    return ANSIBLE_COLLECTIONS_FIXTURES_BASE_PATH
+
+
+@pytest.fixture
+def ansible_config_path() -> Path:
+    """Return path to test ansible.cfg."""
+    return ANSIBLE_CONFIG_FILE
+
+
+@pytest.fixture
+def set_ansible_collections_env(collections_path: Path):
+    """Set ANSIBLE_COLLECTIONS_PATHS environment variable for tests."""
+    original = os.environ.get("ANSIBLE_COLLECTIONS_PATHS")
+    os.environ["ANSIBLE_COLLECTIONS_PATHS"] = str(collections_path)
+    yield
+    if original is None:
+        os.environ.pop("ANSIBLE_COLLECTIONS_PATHS", None)
+    else:
+        os.environ["ANSIBLE_COLLECTIONS_PATHS"] = original
+
+
+@pytest.fixture
+def set_ansible_config_env(ansible_config_path: Path):
+    """Set ANSIBLE_CONFIG environment variable for tests."""
+    original = os.environ.get("ANSIBLE_CONFIG")
+    os.environ["ANSIBLE_CONFIG"] = str(ansible_config_path)
+    yield
+    if original is None:
+        os.environ.pop("ANSIBLE_CONFIG", None)
+    else:
+        os.environ["ANSIBLE_CONFIG"] = original
+
+
+def resolve_doc_uri(filename: str) -> str:
+    """Resolve a fixture filename to a document URI."""
+    return str(FIXTURES_BASE_PATH / filename)
+
+
+def get_doc_text(filename: str) -> str:
+    """Read fixture file contents."""
+    filepath = FIXTURES_BASE_PATH / filename
+    return filepath.read_text(encoding="utf-8")
+
+
+@pytest.fixture
+def get_fixture_doc():
+    """Factory fixture to get document text from fixtures."""
+    def _get_doc(filename: str) -> str:
+        return get_doc_text(filename)
+    return _get_doc
+
+
+@pytest.fixture
+def make_position():
+    """Factory fixture to create LSP Position objects."""
+    def _make_position(line: int, character: int) -> types.Position:
+        return types.Position(line=line, character=character)
+    return _make_position
+
+
+@pytest.fixture
+def make_text_document():
+    """Factory fixture to create TextDocumentIdentifier."""
+    def _make_doc(uri: str) -> types.TextDocumentIdentifier:
+        return types.TextDocumentIdentifier(uri=uri)
+    return _make_doc
+
+
+def smart_filter(completion_list: list, trigger_character: Optional[str] = None) -> list:
+    """
+    Imitate client-side completion filtering using fuzzy search.
+
+    Port of TypeScript smartFilter function using thefuzz instead of Fuse.js.
+    """
+    if not completion_list:
+        return []
+
+    # Sort by sortText
+    sorted_list = sorted(completion_list, key=lambda x: getattr(x, "sort_text", "") or "")
+
+    if not trigger_character:
+        return sorted_list[:5]
+
+    try:
+        from thefuzz import fuzz, process
+    except ImportError:
+        # Fallback: simple prefix matching
+        filtered = [
+            item for item in sorted_list
+            if (getattr(item, "filter_text", None) or getattr(item, "label", ""))
+               .lower().startswith(trigger_character.lower())
+        ]
+        return filtered[:5]
+
+    # Fuzzy search on filterText or label
+    choices = [
+        (getattr(item, "filter_text", None) or getattr(item, "label", ""), item)
+        for item in sorted_list
+    ]
+
+    results = process.extract(
+        trigger_character,
+        [c[0] for c in choices],
+        scorer=fuzz.partial_ratio,
+        limit=5
+    )
+
+    # Map back to items
+    choice_map = {c[0]: c[1] for c in choices}
+    return [choice_map[r[0]] for r in results if r[1] > 40]
+#+end_src
+
+#+begin_src python :tangle ../tests/__init__.py :mkdirp t
+"""Ansible Language Server test suite."""
+#+end_src
+
+#+begin_src python :tangle ../tests/providers/__init__.py :mkdirp t
+"""Provider tests."""
+#+end_src
+
+#+begin_src python :tangle ../tests/services/__init__.py :mkdirp t
+"""Service tests."""
+#+end_src
+
+
+*** Running the Server
+:PROPERTIES:
+:ID:       running-server
+:END:
+
+**** Local Development with uv
+
+[[https://docs.astral.sh/uv/][uv]] is the recommended package manager for local development. It provides fast dependency resolution and virtual environment management.
+
+**Initial Setup:**
+
+#+begin_src shell :tangle no
+# Install uv if not present
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Create virtual environment and install dependencies
+uv sync
+
+# Install dev dependencies
+uv sync --extra dev
+#+end_src
+
+**Running the Server:**
+
+#+begin_src shell :tangle no
+# Run via uv (recommended for development)
+uv run ansible-language-server
+
+# Or run main.py directly
+uv run python main.py
+
+# Run with stdio transport (default, for editor integration)
+uv run ansible-language-server
+
+# Run tests
+uv run pytest
+#+end_src
+
+**Tangling the Source:**
+
+The Python source files are generated from org-mode literate programming files. To regenerate all source from the org files:
+
+#+begin_src shell :tangle no
+# From Emacs: M-x org-babel-tangle on each .org file
+# Or use org-babel-tangle-file from elisp
+#+end_src
+
+**** Entry Point
+
+The =main.py= at project root delegates to the language server module, providing a simple entry point for =uv run python main.py=.
+
+#+begin_src python :tangle ../main.py :mkdirp t
+"""Ansible Language Server - main entry point.
+
+This module provides a simple entry point for running the language server
+via `uv run python main.py` or direct execution.
+"""
+
+from ansible_ls.server import main
+
+if __name__ == "__main__":
+    main()
+#+end_src
+
+**** Editor Configuration
+
+For VS Code, configure the language server path:
+
+#+begin_src json :tangle no
+{
+  "ansible.languageServer.path": "${workspaceFolder}/.venv/bin/ansible-language-server"
+}
+#+end_src
+
+For Emacs with eglot:
+
+#+begin_src elisp :tangle no
+(add-to-list 'eglot-server-programs
+             '(yaml-mode . ("uv" "run" "ansible-language-server")))
+#+end_src
+
+**** Arch Linux Package
+:PROPERTIES:
+:ID:       arch-linux-package
+:END:
+
+For Arch Linux installation, we avoid AUR dependency chains by bundling dependencies in an isolated virtual environment.
+
+**Option 1: pipx (Recommended for Users)**
+
+The simplest approach uses =pipx= which manages isolated environments automatically:
+
+#+begin_src shell :tangle no
+# Install pipx if needed
+sudo pacman -S python-pipx
+
+# Install from local checkout
+pipx install .
+
+# Or install from git directly
+pipx install git+https://github.com/ansible/ansible-language-server.git
+
+# The binary is available at ~/.local/bin/ansible-language-server
+#+end_src
+
+**Option 2: System Package with Bundled venv**
+
+For system-wide installation, the PKGBUILD creates an isolated venv in =/opt= with all dependencies bundled via pip. This avoids requiring AUR packages like =python-pygls=, =python-lsprotocol=, etc.
+
+**Building and Installing:**
+
+#+begin_src shell :tangle no
+cd pkg/arch
+makepkg -si
+#+end_src
+
+**PKGBUILD:**
+
+#+begin_src bash :tangle ../pkg/arch/PKGBUILD :mkdirp t
+# Maintainer: Your Name <your.email@example.com>
+pkgname=python-ansible-language-server
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Language Server Protocol implementation for Ansible (Python)"
+arch=('any')
+url="https://github.com/ansible/ansible-language-server"
+license=('GPL3')
+# Minimal system dependencies - everything else bundled in venv
+depends=('python>=3.10')
+makedepends=('python-pip' 'python-virtualenv')
+optdepends=('ansible: for full Ansible integration')
+provides=('ansible-language-server')
+conflicts=('nodejs-ansible-language-server')
+backup=()
+source=()
+install="${pkgname}.install"
+
+_venvdir="/opt/${pkgname}"
+
+build() {
+    # Build from repository root
+    cd "${startdir}/../.." || cd "${srcdir}/.."
+
+    # Create virtual environment
+    python -m venv --system-site-packages "${srcdir}/venv"
+
+    # Install package and all dependencies into venv
+    "${srcdir}/venv/bin/pip" install --no-cache-dir .
+}
+
+package() {
+    cd "${startdir}/../.." || cd "${srcdir}/.."
+
+    # Install venv to /opt
+    install -dm755 "${pkgdir}${_venvdir}"
+    cp -a "${srcdir}/venv/." "${pkgdir}${_venvdir}"
+
+    # Create wrapper script in /usr/bin
+    install -dm755 "${pkgdir}/usr/bin"
+    cat > "${pkgdir}/usr/bin/ansible-language-server" << 'EOF'
+#!/bin/sh
+exec /opt/python-ansible-language-server/bin/ansible-language-server "$@"
+EOF
+    chmod 755 "${pkgdir}/usr/bin/ansible-language-server"
+
+    # Fix shebang paths in venv to use installed location
+    find "${pkgdir}${_venvdir}/bin" -type f -exec \
+        sed -i "s|${srcdir}/venv|${_venvdir}|g" {} \;
+}
+#+end_src
+
+**Install Script:**
+
+#+begin_src bash :tangle ../pkg/arch/python-ansible-language-server.install :mkdirp t
+post_install() {
+    echo "ansible-language-server installed to /usr/bin/ansible-language-server"
+    echo ""
+    echo "Configure your editor to use the language server:"
+    echo "  VS Code: Set ansible.languageServer.path to /usr/bin/ansible-language-server"
+    echo "  Emacs:   (add-to-list 'eglot-server-programs '(yaml-mode . (\"ansible-language-server\")))"
+}
+
+post_upgrade() {
+    post_install
+}
+#+end_src
+
+**Option 3: Development Installation**
+
+For local development without packaging:
+
+#+begin_src shell :tangle no
+# Create a local venv and install in editable mode
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+
+# Or use uv (faster)
+uv sync --extra dev
+#+end_src
+
+*** Continuous Integration
+:PROPERTIES:
+:ID:       continuous-integration
+:END:
+
+The CI pipeline validates the Python implementation using GitHub Actions, with task orchestration via [[https://taskfile.dev][Taskfile]].
+
+**** Tool Versions
+
+asdf manages runtime versions. Add Python and uv alongside existing Node.js tooling.
+
+#+begin_src text :tangle ../.tool-versions
+nodejs 18.19.1 20.11.1
+task 3.33.1
+python 3.12.4
+#+end_src
+
+**** Taskfile
+
+Update =Taskfile.yml= to include Python tasks alongside existing TypeScript tasks. The Python tasks use =uv= for fast, reproducible dependency management.
+
+#+begin_src yaml :tangle ../Taskfile.yml
+---
+# see https://taskfile.dev/#/
+version: "3"
+env: &env
+  # basically the same thing from .envrc file:
+  # Avoid undesired extra hints from docker when pulling images
+  DOCKER_CLI_HINTS: "false"
+vars:
+  EE_VERSION:
+    sh: ./tools/get-image-version
+  VIRTUAL_ENV:
+    sh: echo "${VIRTUAL_ENV:-${PWD}/out/venvs/${HOSTNAME:-localhost}}"
+tasks:
+  default:
+    desc: Run most commands
+    deps:
+      - setup
+    env:
+      VERSION:
+        sh: node -p "require('./package.json').version"
+    cmds:
+      - task: lint
+      - task: package
+      - task: docs
+      - echo Done {{.VERSION}}!
+
+  # ============================================================
+  # Python Language Server Tasks
+  # ============================================================
+
+  py:setup:
+    desc: Install Python dependencies with uv
+    run: once
+    cmds:
+      - uv sync --extra dev
+    sources:
+      - pyproject.toml
+      - uv.lock
+    generates:
+      - .venv/pyvenv.cfg
+
+  py:test:
+    desc: Run Python test suite
+    deps:
+      - py:setup
+    cmds:
+      - uv run pytest -v
+    sources:
+      - src/**/*.py
+      - tests/**/*.py
+
+  py:test-cov:
+    desc: Run Python tests with coverage
+    deps:
+      - py:setup
+    cmds:
+      - uv run pytest --cov=ansible_ls --cov-report=term-missing --cov-report=xml
+
+  py:lint:
+    desc: Lint Python code with ruff
+    deps:
+      - py:setup
+    cmds:
+      - uv run ruff check src tests
+      - uv run ruff format --check src tests
+
+  py:format:
+    desc: Format Python code with ruff
+    deps:
+      - py:setup
+    cmds:
+      - uv run ruff format src tests
+      - uv run ruff check --fix src tests
+
+  py:typecheck:
+    desc: Type-check Python code with mypy
+    deps:
+      - py:setup
+    cmds:
+      - uv run mypy src
+
+  py:all:
+    desc: Run all Python checks (lint, typecheck, test)
+    cmds:
+      - task: py:lint
+      - task: py:typecheck
+      - task: py:test
+
+  py:build:
+    desc: Build Python wheel
+    deps:
+      - py:setup
+    cmds:
+      - uv build
+    sources:
+      - src/**/*.py
+      - pyproject.toml
+    generates:
+      - dist/*.whl
+      - dist/*.tar.gz
+
+  # ============================================================
+  # TypeScript Language Server Tasks (Legacy)
+  # ============================================================
+
+  vscode:
+    desc: Run vscode-ansible tests using current code from ALS
+    deps:
+      - setup
+    cmds:
+      - ./tools/vscode.sh
+
+  docs:
+    desc: Build the documentation
+    deps:
+      - setup
+    cmds:
+      # Retrieve possibly missing commits:
+      - $(git rev-parse --is-shallow-repository) && git fetch --unshallow > /dev/null || true
+      - git fetch --tags --force
+      - npm run generate-settings-readme
+      - "source {{.VIRTUAL_ENV}}/bin/activate && mkdocs build --strict"
+
+  setup:
+    desc: Install dependencies (TypeScript)
+    run: once
+    env:
+      # used inside test-setup.sh
+      OS: "{{OS}}"
+      ARCH: "{{ARCH}}"
+    cmds:
+      - ./tools/test-setup.sh
+    sources:
+      - package.json
+      - package-lock.json
+      - .config/requirements.*
+      - setup.cfg
+      - tools/test-setup.sh
+      - .config/**/*.*
+    generates:
+      - out/log/manifest.yml
+
+  build:
+    desc: Build the project (TypeScript)
+    deps:
+      - setup
+    cmds:
+      - npm run compile
+    sources:
+      - package-lock.json
+      - package.json
+      - src/**/*.*
+      - test/**/*.*
+      - tsconfig.json
+      - webpack.config.js
+
+  deps:
+    desc: Update dependencies
+    deps:
+      - setup
+    cmds:
+      - npm install -g npm@latest
+      # 1st node version is the implicit one and must match node version from
+      # vscode about dialog and be within supported range from https://www.npmjs.com/package/vscode-extension-tester
+      # as we want to avoid using different node versions across the projects.
+      # 2nd node version is used for preparing for new versions
+      - asdf local nodejs latest:18 latest:$(asdf nodejs resolve lts)
+      - "{{.VIRTUAL_ENV}}/bin/python -m pre_commit autoupdate"
+      - npm outdated
+      # bumps some developments dependencies
+      - npx ncu -u --dep dev
+      # running install after ncu is needed in order to update the lock file
+      - npm install
+
+  lint:
+    desc: Lint the project (all languages)
+    deps:
+      - setup
+    env:
+      <<: *env
+      PRE_COMMIT_COLOR: always
+    cmds:
+      - "{{.VIRTUAL_ENV}}/bin/python -m pre_commit run -a"
+    silent: true
+    sources:
+      - "*.*"
+      - .config/**/*.*
+      - .github/**/*.*
+      - .vscode/**/*.*
+      - doc/**/*.*
+      - images/**/*.*
+      - src/**/*.*
+      - test/**/*.*
+      - tests/**/*.*
+      - tools/**/*.*
+
+  .test:
+    # Keep the desc empty to hide entry when listing
+    # desc: Run all tests
+    vars:
+      ENGINE:
+        sh: bash -c "command -v docker | head -n 1"
+    deps:
+      - build
+    cmds:
+      - "{{.ENGINE}} pull ghcr.io/ansible/creator-ee:{{ .EE_VERSION }}"
+      # Tests that container engine is functional and that we have the image:
+      - "{{.ENGINE}} run -i ghcr.io/ansible/creator-ee:{{ .EE_VERSION }} ansible-lint --version"
+      - >
+        source {{.VIRTUAL_ENV}}/bin/activate &&
+        command -v ansible-lint &&
+        npm run test
+    interactive: true
+
+  test:
+    desc: Run all tests using node (same version as vscode)
+    cmds:
+      - bash -c 'asdf local nodejs latest:18 latest:$(asdf nodejs resolve lts)'
+      - task: .test
+
+  test-node-lts:
+    desc: Run all tests using node-lts (future)
+    cmds:
+      # switch to node-lts
+      - bash -c 'asdf local nodejs latest:$(asdf nodejs resolve lts) latest:18'
+      - task: .test
+      - node --version
+      # restore implicit node version
+      - bash -c 'asdf local nodejs latest:18 latest:$(asdf nodejs resolve lts)'
+
+  test-with-ee:
+    desc: Run only ee tests (TypeScript)
+    deps:
+      - setup
+    cmds:
+      - >
+        source {{.VIRTUAL_ENV}}/bin/activate &&
+        bash -c 'npm run test-with-ee'
+    interactive: true
+
+  test-without-ee:
+    desc: Run only non-ee tests (TypeScript)
+    deps:
+      - setup
+    cmds:
+      - >
+        source {{.VIRTUAL_ENV}}/bin/activate &&
+        bash -c 'npm run test-without-ee'
+    interactive: true
+
+  package:
+    desc: Package extension
+    deps:
+      - build
+    sources:
+      - docs/changelog.md
+      - docs/README.md
+      - package*.json
+      - out/**/*.*
+    generates:
+      - "*.vsix"
+    cmds:
+      - rm -f *.tgz
+      - bash -c 'npm pack'
+    silent: false
+
+  pr:
+    desc: Opens a pull request using gh
+    deps:
+      - lint
+    cmds:
+      - gh pr create
+    interactive: true
+
+  release:
+    desc: Create a new release (used by CI)
+    deps:
+      - setup
+    cmds:
+      - ./tools/release.sh
+    interactive: true
+#+end_src
+
+**** GitHub Actions Workflow
+
+The Python CI workflow runs on push and pull requests to main. It tests across multiple Python versions and operating systems.
+
+#+begin_src yaml :tangle ../.github/workflows/python.yml :mkdirp t
+---
+name: Python CI
+
+on:
+  push:
+    branches: [main, python-vibes]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: python-${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+env:
+  FORCE_COLOR: "1"
+  UV_SYSTEM_PYTHON: "1"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Ruff check
+        run: uv run ruff check src tests
+
+      - name: Ruff format check
+        run: uv run ruff format --check src tests
+
+      - name: Type check with mypy
+        run: uv run mypy src
+
+  test:
+    name: Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+        include:
+          - os: windows-latest
+            python-version: "3.12"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run tests
+        run: uv run pytest -v --tb=short
+
+      - name: Run tests with coverage
+        if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
+        run: uv run pytest --cov=ansible_ls --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+
+  build:
+    name: Build wheel
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build package
+        run: uv build
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel
+          path: dist/*.whl
+          retention-days: 5
+
+  check:
+    # Branch protection gate
+    if: always()
+    runs-on: ubuntu-latest
+    needs: [lint, test, build]
+    steps:
+      - name: Decide whether the needed jobs succeeded or failed
+        uses: re-actors/alls-green@release/v1
+        with:
+          jobs: ${{ toJSON(needs) }}
+#+end_src
+
+**** Pre-commit Configuration
+
+Add Python linting hooks to the pre-commit configuration. This ensures code quality checks run locally before commits.
+
+#+begin_src yaml :tangle ../.pre-commit-config.yaml
+---
+ci:
+  # format compatible with commitlint
+  autoupdate_commit_msg: "chore: pre-commit autoupdate"
+  autoupdate_schedule: monthly
+  autofix_commit_msg: |
+    chore: auto fixes from pre-commit.com hooks
+
+    for more information, see https://pre-commit.ci
+  skip:
+    # https://github.com/pre-commit-ci/issues/issues/55
+    - npm-ci
+    - codecov
+exclude: >
+  (?x)^(
+    .config/requirements.in|
+    .*.svg
+  )$
+repos:
+  # ============================================================
+  # Python Hooks
+  # ============================================================
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # ============================================================
+  # Shell Hooks
+  # ============================================================
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.9.0.6
+    hooks:
+      - id: shellcheck
+        args:
+          - --color=always
+          - -e
+          - SC1091
+
+  # ============================================================
+  # Local Hooks
+  # ============================================================
+  - repo: local
+    hooks:
+      - id: npm-ci
+        name: Run 'npm ci' to ensure deps and versions are correct
+        entry: >-
+          bash -c 'npm ci --ignore-scripts &&
+          npm version --allow-same-version --no-commit-hooks
+          --no-git-tag-version $(npm pkg get version | sed "s/\"//g")'
+        language: node
+        files: "(package|package-lock).json$"
+        pass_filenames: false
+      - id: git-dirty
+        name: Check if git reports dirty
+        entry: git diff --exit-code
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: codecov
+        name: Check codecov.yml
+        # https://superuser.com/a/1587813/3004
+        entry: >
+          bash -c '[ $(
+          curl --silent -o /dev/stderr -w "%{http_code}" -X POST
+          --data-binary @codecov.yml https://codecov.io/validate
+          ) -eq 200 ]'
+        language: system
+        files: "codecov.yml"
+        pass_filenames: false
+
+  # ============================================================
+  # General Hooks
+  # ============================================================
+  - repo: https://github.com/streetsidesoftware/cspell-cli
+    rev: v8.3.0
+    hooks:
+      - id: cspell
+        name: Spell check with cspell
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks.git
+    rev: v4.5.0
+    hooks:
+      - id: end-of-file-fixer
+        exclude: >
+          (?x)^(
+            docs/settings.md
+          )$
+      - id: trailing-whitespace
+        exclude: >
+          (?x)^(
+            docs/settings.md
+          )$
+      - id: mixed-line-ending
+      - id: check-byte-order-marker
+      - id: check-executables-have-shebangs
+      - id: check-merge-conflict
+      - id: check-json
+        # https://github.com/pre-commit/pre-commit-hooks/issues/395
+        exclude: >
+          (?x)^(
+            .vscode/.*|
+            scripts/tsconfig.json|
+            scripts/tsconfig.esm.json|
+            scripts/tsconfig.umd.json|
+            tsconfig.json
+          )$
+
+      - id: debug-statements
+        language_version: python3
+
+  # ============================================================
+  # Formatting Hooks
+  # ============================================================
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    # keep it before markdownlint and eslint
+    rev: "v4.0.0-alpha.8"
+    hooks:
+      - id: prettier
+        additional_dependencies:
+          - prettier
+
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.39.0
+    hooks:
+      - id: markdownlint
+        exclude: >
+          (?x)^
+            docs/changelog-fragments\.d/\d+\.\w+\.md|
+            docs/settings.md
+          $
+
+  # ============================================================
+  # TypeScript Hooks (Legacy)
+  # ============================================================
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v9.0.0-alpha.2
+    hooks:
+      - id: eslint
+        args:
+          - --fix
+          - --max-warnings
+          - "0"
+        additional_dependencies:
+          - "@typescript-eslint/eslint-plugin"
+          - "@typescript-eslint/parser"
+          - eslint@v8.28.0
+          - eslint-plugin-prettier
+          - eslint-config-prettier
+          - prettier
+          - typescript
+          - typescript-eslint
+        files: \.[jt]sx?$ # *.js, *.jsx, *.ts and *.tsx
+        types: [file]
+#+end_src
+
+**** PyPI Publishing Workflow
+
+For releasing the Python package to PyPI (replaces npm publishing).
+
+#+begin_src yaml :tangle ../.github/workflows/publish-pypi.yml :mkdirp t
+---
+name: Publish to PyPI
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+jobs:
+  pypi:
+    name: Publish to PyPI
+    environment:
+      name: publish
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # Required for trusted publishing
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build package
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # Uses trusted publishing - no API token needed
+        # Configure at: https://pypi.org/manage/project/ansible-language-server/settings/publishing/
+#+end_src
+
+*** Implementation
+documented at [[id:python-port-docs][Python Implementation]]

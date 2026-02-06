@@ -1,0 +1,50 @@
+# Maintainer: Your Name <your.email@example.com>
+pkgname=python-ansible-language-server
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Language Server Protocol implementation for Ansible (Python)"
+arch=('any')
+url="https://github.com/ansible/ansible-language-server"
+license=('GPL3')
+# Minimal system dependencies - everything else bundled in venv
+depends=('python>=3.10')
+makedepends=('python-pip' 'python-virtualenv')
+optdepends=('ansible: for full Ansible integration')
+provides=('ansible-language-server')
+conflicts=('nodejs-ansible-language-server')
+backup=()
+source=()
+install="${pkgname}.install"
+
+_venvdir="/opt/${pkgname}"
+
+build() {
+    # Build from repository root
+    cd "${startdir}/../.." || cd "${srcdir}/.."
+
+    # Create virtual environment
+    python -m venv --system-site-packages "${srcdir}/venv"
+
+    # Install package and all dependencies into venv
+    "${srcdir}/venv/bin/pip" install --no-cache-dir .
+}
+
+package() {
+    cd "${startdir}/../.." || cd "${srcdir}/.."
+
+    # Install venv to /opt
+    install -dm755 "${pkgdir}${_venvdir}"
+    cp -a "${srcdir}/venv/." "${pkgdir}${_venvdir}"
+
+    # Create wrapper script in /usr/bin
+    install -dm755 "${pkgdir}/usr/bin"
+    cat > "${pkgdir}/usr/bin/ansible-language-server" << 'EOF'
+#!/bin/sh
+exec /opt/python-ansible-language-server/bin/ansible-language-server "$@"
+EOF
+    chmod 755 "${pkgdir}/usr/bin/ansible-language-server"
+
+    # Fix shebang paths in venv to use installed location
+    find "${pkgdir}${_venvdir}/bin" -type f -exec \
+        sed -i "s|${srcdir}/venv|${_venvdir}|g" {} \;
+}

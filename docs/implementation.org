@@ -1,0 +1,77 @@
+* Python Implementation
+:PROPERTIES:
+:ID:       python-port-docs
+:END:
+
+The Python port of ansible-language-server aims:
+
+1. *Native Ansible Integration* - Import Ansible's internal APIs directly for keyword validation, module discovery, and documentation rather than reimplementing or shelling out
+2. *Modern Tooling* - Use =tree-sitter= for fast, incremental parsing with position tracking instead of slower pure-Python parsers
+3. *Simplified Architecture* - Replace complex subprocess management with Python library calls (=podman-py=, =importlib.metadata=, =ansible-runner=)
+4. *Better Developer Experience* - Format with =black=, lint with =ruff=, type-check with =mypy=, all working on Python code
+
+** Architecture
+:PROPERTIES:
+:ID:       architecture
+:END:
+The server follows the standard Language Server Protocol architecture, built on [[https://github.com/openlawlibrary/pygls][pygls]].
+u*** Server Entry Point
+:PROPERTIES:
+:ID:       server-entry-point
+:END:
+
+=pygls= is the de-facto Python Language Server Protocol framework, providing full LSP spec compliance, native async/await support, and built-in document synchronization. The server entry point is minimal—pygls handles the protocol, we register feature handlers.
+
+*TypeScript:* [[file:src/server.ts][src/server.ts]] (66 lines) creates a =Connection= and initializes =AnsibleLanguageService=.
+
+*Python:*
+#+begin_src python :tangle ../../src/ansible_ls/server.py :mkdirp t
+"""Ansible Language Server entry point."""
+
+from pygls.lsp.server import LanguageServer
+
+server = LanguageServer("ansible-language-server", "v0.1.0")
+
+
+def main():
+    """Start the language server."""
+    server.start_io()
+
+
+if __name__ == "__main__":
+    main()
+#+end_src
+** Data Models
+documented at [[id:data-models][Data Models]]
+** Services
+documented at [[id:services][Services]]
+** External Tool Integration
+:PROPERTIES:
+:ID:       external-tools
+:END:
+
+We prefer Python APIs over subprocess management where stable interfaces exist:
+
+| Tool         | Approach                | Rationale                     |
+|--------------+-------------------------+-------------------------------|
+| Version info | =importlib.metadata=      | No subprocess, fast, reliable |
+| ansible-lint | subprocess + JSON parse | Only stable interface         |
+| Syntax check | subprocess              | Thread-safe, stable           |
+| Module docs  | =ansible-runner=          | Stable Python API             |
+
+For module documentation, =ansible-runner= provides a stable API:
+
+#+begin_src python
+import ansible_runner
+import json
+
+def get_module_docs(module_name: str) -> dict:
+    """Get module documentation via ansible-runner."""
+    output, errors = ansible_runner.get_plugin_docs(
+        plugin_names=[module_name],
+        plugin_type='module',
+        response_format='json'
+    )
+    return json.loads(output) if output else {}
+#+end_src
+

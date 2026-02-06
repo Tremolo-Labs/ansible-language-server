@@ -1,0 +1,1317 @@
+* TODO Data Models
+:PROPERTIES:
+:ID:       data-models
+:END:
+** TODO Metadata Extraction Script
+:PROPERTIES:
+:ID:       296ff42f-3f7f-4a04-b06a-b07d5b0b46e0
+:END:
+
+The keyword extraction script extracts data from Ansible internals and tooling, used for types to which help validate the syntax tree as valid Ansible and navigate it.
+
+| Category      | Source                         | Count (2.20.1) | Notes                   |
+|---------------+--------------------------------+----------------+-------------------------|
+| Keywords      | =fattributes= on Play/Task/Block | ~140 unique    | Core playbook structure |
+| Jinja Filters | =filter_loader.all()=            | 78 unique      | Plus 54 Jinja2 builtins |
+| Jinja Tests   | =test_loader.all()=              | 51 unique      | Plus 39 Jinja2 builtins |
+| Lookups       | =lookup_loader.all()=            | 25 plugins     | With option metadata    |
+| Magic Vars    | Hardcoded list                 | 20+            | Documented in Ansible   |
+| Callbacks     | =callback_loader.all()=          | 10+ plugins    | For advanced use        |
+#+begin_src python :tangle ../../tools/extract_schema.py :mkdirp t
+"""Extract Ansible schema and generate typed Python modules.
+
+Imports Ansible's internal APIs to extract the schema of plays, tasks,
+blocks, roles, plus filters, tests, lookups, and magic variables.
+
+Usage:
+    python tools/extract_schema.py
+
+Output:
+    src/ansible_ls/ansible_schema/ - Generated schema modules
+"""
+
+import sys
+from pathlib import Path
+from textwrap import dedent
+from typing import Any
+import logging
+
+#+end_src
+*** Ansible Keywords
+:PROPERTIES:
+:ID:       ansible-keywords
+:END:
+
+Ansible defines play/task/block/role keywords as class attributes using a descriptor pattern called =fattributes=. There's also custom filters and plugins, 
+
+#+begin_src python :tangle ../../tools/extract_schema.py :mkdirp t
+def extract_keywords() -> dict[str, list[str]]:
+    """Extract keywords from Ansible playbook classes via fattributes."""
+    keywords: dict[str, list[str]] = {
+        "play": [],
+        "task": [],
+        "block": [],
+        "role": [],
+    }
+
+    try:
+        from ansible.playbook.play import Play
+        from ansible.playbook.task import Task
+        from ansible.playbook.block import Block
+        from ansible.playbook.role.definition import RoleDefinition
+
+        keywords["play"] = list(Play.fattributes.keys())
+        keywords["task"] = list(Task.fattributes.keys())
+        keywords["block"] = list(Block.fattributes.keys())
+        keywords["role"] = list(RoleDefinition.fattributes.keys())
+
+    except ImportError as e:
+        print(f"Warning: Could not import Ansible: {e}", file=sys.stderr)
+
+    return keywords
+
+#+end_src
+#+begin_src python :tangle ../../tools/extract_schema.py :mkdirp t
+def extract_keyword_metadata() -> dict[str, dict[str, Any]]:
+    """Extract detailed keyword metadata (type, required, default)."""
+    metadata: dict[str, dict[str, Any]] = {}
+
+    try:
+        from ansible.playbook.play import Play
+        from ansible.playbook.task import Task
+        from ansible.playbook.block import Block
+        from ansible.playbook.role.definition import RoleDefinition
+
+        for context, cls in [
+            ("play", Play),
+            ("task", Task),
+            ("block", Block),
+            ("role", RoleDefinition),
+        ]:
+            metadata[context] = {}
+            for name, attr in cls.fattributes.items():
+                metadata[context][name] = {
+                    "isa": getattr(attr, "isa", None),
+                    "required": getattr(attr, "required", False),
+                    "default": _serialize_default(getattr(attr, "default", None)),
+                    "listof": _serialize_default(getattr(attr, "listof", None)),
+                    "alias": getattr(attr, "alias", None),
+                }
+
+    except ImportError as e:
+        print(f"Warning: Could not import Ansible: {e}", file=sys.stderr)
+
+    return metadata
+
+#+end_src
+
+*** Jinja2 Filters
+:PROPERTIES:
+:ID:       jinja-filters
+:END:
+Ansible extends Jinja2 with custom filters for data manipulation. 
+
+Sample Ansible filters (78 in 2.20.1):
+- =b64encode=, =b64decode= - Base64 encoding
+- =to_json=, =from_json= - JSON serialization
+- =to_yaml=, =from_yaml= - YAML serialization
+- =regex_search=, =regex_replace=, =regex_findall= - Regex operations
+- =combine=, =dict2items=, =items2dict= - Dict manipulation
+- =mandatory= - Force variable presence
+- =default=, =ternary= - Conditional values
+- =hash=, =password_hash= - Cryptographic hashing
+
+Jinja2 builtins (54 additional): 
+- =upper=, =lower=, =capitalize=, =title= - String case
+- =replace=, =trim=, =truncate= - String manipulation
+- =join=, =first=, =last=, =length= - Sequence operations
+- =int=, =float=, =string=, =list= - Type conversion
+- =sort=, =unique=, =reverse=, =map=, =select=, =reject= - Iteration
+
+Access via =filter_loader=:
+
+#+begin_src python
+from ansible.plugins.loader import filter_loader
+
+# Enumerate all Ansible filters
+for wrapper in filter_loader.all():
+    print(f"{wrapper.ansible_name}: aliases={wrapper.ansible_aliases}")
+#+end_src
+
+#+begin_src python :tangle ../../tools/extract_schema.py :mkdirp t
+def extract_jinja_filters() -> dict[str, dict[str, Any]]:
+    """Extract Jinja2 filters from Ansible and builtin Jinja2."""
+    filters: dict[str, dict[str, Any]] = {}
+    used_fallback = False
+
+    # Ansible filters via loader
+    try:
+        from ansible.plugins.loader import filter_loader
+
+        seen_names: set[str] = set()
+        for wrapper in filter_loader.all():
+            name = wrapper.ansible_name
+            if name in seen_names:
+                continue
+            seen_names.add(name)
+
+            # Extract short name from FQCN
+            short_name = name.split(".")[-1] if "." in name else name
+
+            filters[name] = {
+                "short_name": short_name,
+                "aliases": list(wrapper.ansible_aliases) if wrapper.ansible_aliases else [],
+                "type": "ansible",
+                "allow_extras": getattr(wrapper, "allow_extras", False),
+            }
+
+    except ImportError as e:
+        print(f"Warning: Could not import filter_loader: {e}", file=sys.stderr)
+        used_fallback = True
+
+    # Jinja2 builtin filters
+    try:
+        from jinja2 import Environment
+
+        env = Environment()
+        for name in env.filters:
+            if f"ansible.builtin.{name}" not in filters:
+                filters[f"jinja2.{name}"] = {
+                    "short_name": name,
+                    "aliases": [],
+                    "type": "jinja2_builtin",
+                }
+
+    except ImportError:
+        used_fallback = True
+
+    return filters
+
+#+end_src
+
+
+*** Jinja2 Tests
+:PROPERTIES:
+:ID:       jinja-tests
+:END:
+Tests are used in conditionals (=when: var is test=).
+
+Sample Ansible tests (51 in 2.20.1):
+- =failed=, =succeeded=, =changed=, =skipped= - Task status
+- =reachable=, =unreachable= - Host connectivity
+- =file=, =directory=, =link=, =exists= - File system
+- =match=, =search=, =regex= - Pattern matching
+- =version=, =version_compare= - Version comparison
+- =superset=, =subset=, =contains= - Collection tests
+- =truthy=, =falsy= - Boolean evaluation
+
+Jinja2 builtins (39 additional):
+- =defined=, =undefined= - Variable existence
+- =none=, =boolean=, =integer=, =float=, =string=, =mapping=, =iterable= - Type tests
+- =upper=, =lower= - String case
+- =even=, =odd=, =divisibleby= - Numeric tests
+- =in= - Membership
+Access via =test_loader=:
+
+#+begin_src python
+from ansible.plugins.loader import test_loader
+
+for wrapper in test_loader.all():
+    print(f"{wrapper.ansible_name}: aliases={wrapper.ansible_aliases}")
+#+end_src
+#+begin_src python :tangle ../../tools/extract_schema.py :mkdirp t
+
+def extract_jinja_tests() -> dict[str, dict[str, Any]]:
+    """Extract Jinja2 tests from Ansible and builtin Jinja2."""
+    tests: dict[str, dict[str, Any]] = {}
+    used_fallback = False
+
+    # Ansible tests via loader
+    try:
+        from ansible.plugins.loader import test_loader
+
+        seen_names: set[str] = set()
+        for wrapper in test_loader.all():
+            name = wrapper.ansible_name
+            if name in seen_names:
+                continue
+            seen_names.add(name)
+
+            short_name = name.split(".")[-1] if "." in name else name
+
+            tests[name] = {
+                "short_name": short_name,
+                "aliases": list(wrapper.ansible_aliases) if wrapper.ansible_aliases else [],
+                "type": "ansible",
+            }
+
+    except ImportError as e:
+        print(f"Warning: Could not import test_loader: {e}", file=sys.stderr)
+        used_fallback = True
+
+    # Jinja2 builtin tests
+    try:
+        from jinja2 import Environment
+
+        env = Environment()
+        for name in env.tests:
+            if f"ansible.builtin.{name}" not in tests:
+                tests[f"jinja2.{name}"] = {
+                    "short_name": name,
+                    "aliases": [],
+                    "type": "jinja2_builtin",
+                }
+
+    except ImportError:
+        used_fallback = True
+
+    return tests
+
+#+end_src
+
+*** Lookup Plugins
+:PROPERTIES:
+:ID:       lookup-plugins
+:END:
+
+Lookups retrieve data from external sources. They have rich option metadata:
+
+#+begin_src python
+from ansible.plugins.loader import lookup_loader
+
+for wrapper in lookup_loader.all():
+    name = wrapper.ansible_name
+    options = wrapper.option_definitions or {}
+    print(f"{name}: {len(options)} options")
+    for opt_name, opt_meta in options.items():
+        print(f"  {opt_name}: {opt_meta.get('description', '')[:50]}")
+#+end_src
+
+Sample lookups (25 in 2.20.1):
+- =file= - Read file contents
+- =template= - Render Jinja2 template
+- =env= - Read environment variable
+- =config= - Read Ansible configuration
+- =pipe= - Execute command and return output
+- =csvfile=, =ini=, =password=, =lines= - Data file parsing
+- =dict=, =items=, =list= - Data structure helpers
+- =fileglob=, =first_found= - File discovery
+- =url= - HTTP fetch
+- =sequence=, =random_choice=, =cartesian= - Generation
+
+#+begin_src python :tangle ../../tools/extract_schema.py :mkdirp t
+def extract_lookups() -> dict[str, dict[str, Any]]:
+    """Extract lookup plugins with their option metadata."""
+    lookups: dict[str, dict[str, Any]] = {}
+
+    try:
+        from ansible.plugins.loader import lookup_loader
+
+        for wrapper in lookup_loader.all():
+            name = wrapper.ansible_name
+            short_name = name.split(".")[-1] if "." in name else name
+
+            # Extract option definitions
+            options = {}
+            opt_defs = getattr(wrapper, "option_definitions", None)
+            if opt_defs:
+                for opt_name, opt_meta in opt_defs.items():
+                    options[opt_name] = {
+                        "description": opt_meta.get("description", ""),
+                        "type": opt_meta.get("type", "string"),
+                        "required": opt_meta.get("required", False),
+                        "default": _serialize_default(opt_meta.get("default")),
+                        "choices": opt_meta.get("choices"),
+                    }
+
+            lookups[name] = {
+                "short_name": short_name,
+                "aliases": list(wrapper.ansible_aliases) if wrapper.ansible_aliases else [],
+                "options": options,
+                "lazy_eval": getattr(wrapper, "accept_lazy_markers", False),
+            }
+
+    except ImportError as e:
+        print(f"Warning: Could not import lookup_loader: {e}", file=sys.stderr)
+
+    return lookups
+
+#+end_src
+*** TODO Magic Variables
+:PROPERTIES:
+:ID:       magic-variables
+:END:
+
+- Note taken on [2026-02-01 Sun 22:42] \\
+  scrape 'em from the docs, notify and prompt an LLM in case of failure. Let's have an automated build and cache artifacts, no hardcoded values.
+Magic variables are injected into the execution context. These are hardcoded (not available via API):
+
+| Variable                 | Scope  | Description                             |
+|--------------------------+--------+-----------------------------------------|
+| =inventory_hostname=       | Host   | Full hostname from inventory            |
+| =inventory_hostname_short= | Host   | Short hostname (before first dot)       |
+| =groups=                   | Global | Dict of all groups and their hosts      |
+| =group_names=              | Host   | List of groups the host belongs to      |
+| =hostvars=                 | Global | Dict of all host variables              |
+| =ansible_host=             | Host   | Target host address                     |
+| =ansible_port=             | Host   | Target connection port                  |
+| =ansible_user=             | Host   | Target user for connection              |
+| =ansible_connection=       | Host   | Connection plugin name                  |
+| =ansible_become=           | Task   | Whether privilege escalation is enabled |
+| =ansible_become_user=      | Task   | User to escalate to                     |
+| =ansible_check_mode=       | Play   | True if running in check mode           |
+| =ansible_diff_mode=        | Play   | True if running in diff mode            |
+| =ansible_verbosity=        | Play   | Current verbosity level                 |
+| =play_hosts=               | Play   | List of hosts in current play           |
+| =ansible_play_name=        | Play   | Name of the current play                |
+| =ansible_role_name=        | Role   | Name of currently executing role        |
+| =item=                     | Loop   | Current loop item                       |
+| =ansible_loop_var=         | Loop   | Name of the loop variable               |
+| =ansible_index_var=        | Loop   | Name of loop index variable             |
+
+#+begin_src python :tangle ../../tools/extract_schema.py :mkdirp t
+
+def extract_magic_variables() -> dict[str, dict[str, str]]:
+    """Return documented magic variables (these are hardcoded, not from API)."""
+    return {
+        # Host/inventory scope
+        "inventory_hostname": {
+            "scope": "host",
+            "description": "Full hostname from inventory",
+        },
+        "inventory_hostname_short": {
+            "scope": "host",
+            "description": "Short hostname (before first dot)",
+        },
+        "inventory_dir": {
+            "scope": "global",
+            "description": "Directory containing the inventory file",
+        },
+        "inventory_file": {
+            "scope": "global",
+            "description": "Path to the inventory file",
+        },
+        "groups": {
+            "scope": "global",
+            "description": "Dict of all groups and their hosts",
+        },
+        "group_names": {
+            "scope": "host",
+            "description": "List of groups the host belongs to",
+        },
+        "hostvars": {
+            "scope": "global",
+            "description": "Dict of all host variables",
+        },
+        # Connection variables
+        "ansible_host": {
+            "scope": "host",
+            "description": "Target host address",
+        },
+        "ansible_port": {
+            "scope": "host",
+            "description": "Target connection port",
+        },
+        "ansible_user": {
+            "scope": "host",
+            "description": "Target user for connection",
+        },
+        "ansible_connection": {
+            "scope": "host",
+            "description": "Connection plugin name",
+        },
+        "ansible_ssh_private_key_file": {
+            "scope": "host",
+            "description": "SSH private key file path",
+        },
+        "ansible_become": {
+            "scope": "task",
+            "description": "Whether privilege escalation is enabled",
+        },
+        "ansible_become_user": {
+            "scope": "task",
+            "description": "User to escalate to",
+        },
+        "ansible_become_method": {
+            "scope": "task",
+            "description": "Privilege escalation method (sudo, su, etc.)",
+        },
+        # Play context
+        "ansible_check_mode": {
+            "scope": "play",
+            "description": "True if running in check mode",
+        },
+        "ansible_diff_mode": {
+            "scope": "play",
+            "description": "True if running in diff mode",
+        },
+        "ansible_verbosity": {
+            "scope": "play",
+            "description": "Current verbosity level",
+        },
+        "play_hosts": {
+            "scope": "play",
+            "description": "List of hosts in current play",
+        },
+        "ansible_play_hosts": {
+            "scope": "play",
+            "description": "Same as play_hosts",
+        },
+        "ansible_play_hosts_all": {
+            "scope": "play",
+            "description": "All hosts in play, even failed",
+        },
+        "ansible_play_batch": {
+            "scope": "play",
+            "description": "Hosts in current batch (serial)",
+        },
+        "ansible_play_name": {
+            "scope": "play",
+            "description": "Name of the current play",
+        },
+        # Role context
+        "ansible_role_name": {
+            "scope": "role",
+            "description": "Name of currently executing role",
+        },
+        "role_name": {
+            "scope": "role",
+            "description": "Same as ansible_role_name",
+        },
+        "role_path": {
+            "scope": "role",
+            "description": "Path to current role directory",
+        },
+        # Loop variables
+        "item": {
+            "scope": "loop",
+            "description": "Current loop item",
+        },
+        "ansible_loop_var": {
+            "scope": "loop",
+            "description": "Name of the loop variable",
+        },
+        "ansible_index_var": {
+            "scope": "loop",
+            "description": "Name of loop index variable",
+        },
+        "ansible_loop": {
+            "scope": "loop",
+            "description": "Extended loop info (index, first, last, etc.)",
+        },
+        # Task result access
+        "ansible_facts": {
+            "scope": "host",
+            "description": "Facts gathered for the host",
+        },
+        "ansible_local": {
+            "scope": "host",
+            "description": "Local facts from /etc/ansible/facts.d",
+        },
+        # Execution context
+        "ansible_version": {
+            "scope": "global",
+            "description": "Dict with Ansible version info",
+        },
+        "playbook_dir": {
+            "scope": "global",
+            "description": "Directory containing the playbook",
+        },
+        "ansible_config_file": {
+            "scope": "global",
+            "description": "Path to ansible.cfg in use",
+        },
+    }
+
+#+end_src
+*** callback plugins
+#+begin_src python :tangle ../../tools/extract_schema.py :mkdirp t
+
+def extract_callback_plugins() -> dict[str, dict[str, Any]]:
+    """Extract callback plugin names (for advanced grammar support)."""
+    callbacks: dict[str, dict[str, Any]] = {}
+
+    try:
+        from ansible.plugins.loader import callback_loader
+
+        for wrapper in callback_loader.all():
+            name = wrapper.ansible_name
+            short_name = name.split(".")[-1] if "." in name else name
+
+            callbacks[name] = {
+                "short_name": short_name,
+                "aliases": list(wrapper.ansible_aliases) if wrapper.ansible_aliases else [],
+            }
+
+    except ImportError:
+        pass
+
+    return callbacks
+
+#+end_src
+*** Full Extraction Script
+
+#+begin_src python :tangle ../../tools/extract_schema.py :mkdirp t
+
+def _serialize_default(value: Any) -> Any:
+    """Serialize default values to JSON-safe types."""
+    if value is None:
+        return None
+    if callable(value):
+        return f"<callable: {value.__name__}>"
+    if isinstance(value, type):
+        return value.__name__
+    if isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (list, tuple)):
+        return [_serialize_default(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _serialize_default(v) for k, v in value.items()}
+    return repr(value)
+
+#+end_src
+
+#+begin_src python :tangle ../../tools/extract_schema.py :mkdirp t
+
+# main() defined after generator functions
+#+end_src
+
+** Schema Generation
+:PROPERTIES:
+:ID:       schema-generation
+:END:
+
+Generate Python modules from Jinja2 templates. Templates live in =tools/templates/= and render with extracted metadata.
+
+*** Templates
+
+Schema template - the core datatype definitions:
+
+#+begin_src jinja2 :tangle ../../tools/templates/schema.py.j2 :mkdirp t
+"""Ansible type schemas - auto-generated from Ansible source.
+
+Each TypeSchema describes the structure of an Ansible datatype
+(play, task, block, role) with field definitions.
+
+DO NOT EDIT. Regenerate with: python tools/extract_schema.py
+"""
+
+from dataclasses import dataclass
+from functools import cached_property
+from typing import Any, Optional
+
+
+@dataclass(frozen=True, slots=True)
+class FieldDef:
+    """Definition of a field in an Ansible datatype."""
+    name: str
+    isa: Optional[str] = None
+    required: bool = False
+    default: Any = None
+    listof: Optional[str] = None
+    alias: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class TypeSchema:
+    """Schema for an Ansible datatype (play, task, block, role)."""
+    name: str
+    fields: tuple[FieldDef, ...]
+
+    @cached_property
+    def field_names(self) -> frozenset[str]:
+        """All valid field names for this type."""
+        return frozenset(f.name for f in self.fields)
+
+    @cached_property
+    def required_fields(self) -> frozenset[str]:
+        """Fields that must be present (fingerprint for identification)."""
+        return frozenset(f.name for f in self.fields if f.required)
+
+    @cached_property
+    def field_map(self) -> dict[str, FieldDef]:
+        """Lookup field by name."""
+        return {f.name: f for f in self.fields}
+
+    def __contains__(self, name: str) -> bool:
+        return name in self.field_names
+
+    def __getitem__(self, name: str) -> FieldDef:
+        return self.field_map[name]
+
+    def get(self, name: str) -> Optional[FieldDef]:
+        return self.field_map.get(name)
+
+    def matches(self, keys: set[str]) -> bool:
+        """Check if keys contain all required fields (fingerprint match)."""
+        return self.required_fields <= keys
+
+
+{% for ctx_name, fields in keyword_metadata.items() %}
+{{ ctx_name | upper }} = TypeSchema(
+    name="{{ ctx_name }}",
+    fields=(
+{%- for name, info in fields | dictsort %}
+        FieldDef({{ name | repr }}, {{ info.isa | repr }}, {{ info.required }}, {{ info.default | repr }}, {{ info.listof | repr }}, {{ info.alias | repr }}),
+{%- endfor %}
+    ),
+)
+
+{% endfor %}
+
+SCHEMAS: dict[str, TypeSchema] = {
+{%- for ctx_name in keyword_metadata %}
+    "{{ ctx_name }}": {{ ctx_name | upper }},
+{%- endfor %}
+}
+
+ALL_KEYWORDS: frozenset[str] = frozenset().union(*(s.field_names for s in SCHEMAS.values()))
+
+
+def identify_context(keys: set[str]) -> Optional[str]:
+    """Identify context type from keys using required field fingerprints."""
+    for schema in (PLAY, BLOCK, ROLE):
+        if schema.matches(keys):
+            return schema.name
+    if keys & TASK.field_names:
+        return "task"
+    return None
+
+
+def get_schema(name: str) -> Optional[TypeSchema]:
+    """Get schema by name."""
+    return SCHEMAS.get(name)
+#+end_src
+
+Jinja filters and tests template:
+
+#+begin_src jinja2 :tangle ../../tools/templates/jinja.py.j2 :mkdirp t
+"""Jinja2 filters and tests - auto-generated from Ansible source.
+
+DO NOT EDIT. Regenerate with: python tools/extract_schema.py
+"""
+
+from dataclasses import dataclass
+from typing import Optional
+
+
+@dataclass(frozen=True, slots=True)
+class JinjaFilter:
+    """A Jinja2 filter available in Ansible templates."""
+    fqcn: str
+    short_name: str
+    source: str
+    aliases: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class JinjaTest:
+    """A Jinja2 test available in Ansible templates."""
+    fqcn: str
+    short_name: str
+    source: str
+    aliases: tuple[str, ...] = ()
+
+
+FILTERS: dict[str, JinjaFilter] = {
+{%- for fqcn, info in jinja_filters | dictsort %}
+    {{ info.short_name | repr }}: JinjaFilter({{ fqcn | repr }}, {{ info.short_name | repr }}, {{ info.type | default("unknown") | repr }}, {{ info.aliases | default([]) | tuple | repr }}),
+{%- endfor %}
+}
+
+TESTS: dict[str, JinjaTest] = {
+{%- for fqcn, info in jinja_tests | dictsort %}
+    {{ info.short_name | repr }}: JinjaTest({{ fqcn | repr }}, {{ info.short_name | repr }}, {{ info.type | default("unknown") | repr }}, {{ info.aliases | default([]) | tuple | repr }}),
+{%- endfor %}
+}
+
+FILTER_NAMES: frozenset[str] = frozenset(FILTERS.keys())
+TEST_NAMES: frozenset[str] = frozenset(TESTS.keys())
+
+
+def is_valid_filter(name: str) -> bool:
+    return name in FILTER_NAMES
+
+
+def is_valid_test(name: str) -> bool:
+    return name in TEST_NAMES
+#+end_src
+
+Lookup plugins template:
+
+#+begin_src jinja2 :tangle ../../tools/templates/lookups.py.j2 :mkdirp t
+"""Lookup plugins - auto-generated from Ansible source.
+
+DO NOT EDIT. Regenerate with: python tools/extract_schema.py
+"""
+
+from dataclasses import dataclass
+from typing import Any, Optional
+
+
+@dataclass(frozen=True, slots=True)
+class LookupOption:
+    """An option for a lookup plugin."""
+    name: str
+    description: str = ""
+    type: str = "string"
+    required: bool = False
+    default: Any = None
+
+
+@dataclass(frozen=True)
+class LookupPlugin:
+    """An Ansible lookup plugin."""
+    fqcn: str
+    short_name: str
+    options: tuple[LookupOption, ...] = ()
+    aliases: tuple[str, ...] = ()
+
+
+LOOKUPS: dict[str, LookupPlugin] = {
+{%- for fqcn, info in lookups | dictsort %}
+    {{ info.short_name | repr }}: LookupPlugin({{ fqcn | repr }}, {{ info.short_name | repr }}, (), {{ info.aliases | default([]) | tuple | repr }}),
+{%- endfor %}
+}
+
+LOOKUP_NAMES: frozenset[str] = frozenset(LOOKUPS.keys())
+
+
+def is_valid_lookup(name: str) -> bool:
+    return name in LOOKUP_NAMES
+#+end_src
+
+Magic variables template:
+
+#+begin_src jinja2 :tangle ../../tools/templates/magic_vars.py.j2 :mkdirp t
+"""Magic variables - auto-generated from Ansible source.
+
+DO NOT EDIT. Regenerate with: python tools/extract_schema.py
+"""
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class MagicVariable:
+    """An Ansible magic variable."""
+    name: str
+    scope: str
+    description: str = ""
+
+
+MAGIC_VARS: dict[str, MagicVariable] = {
+{%- for name, info in magic_variables | dictsort %}
+    {{ name | repr }}: MagicVariable({{ name | repr }}, {{ info.scope | repr }}, {{ info.description | replace('"', '\\"') | repr }}),
+{%- endfor %}
+}
+
+MAGIC_VAR_NAMES: frozenset[str] = frozenset(MAGIC_VARS.keys())
+
+
+def is_magic_variable(name: str) -> bool:
+    return name in MAGIC_VAR_NAMES
+#+end_src
+
+Package init template:
+
+#+begin_src jinja2 :tangle ../../tools/templates/__init__.py.j2 :mkdirp t
+"""Ansible schema definitions - auto-generated from Ansible source.
+
+Provides type schemas, Jinja2 filters/tests, lookup plugins, and magic variables
+extracted from Ansible's internal metadata.
+
+Regenerate with: python tools/extract_schema.py
+"""
+
+from .schema import (
+    FieldDef, TypeSchema, SCHEMAS,
+    PLAY, TASK, BLOCK, ROLE,
+    ALL_KEYWORDS, identify_context, get_schema,
+)
+from .jinja import (
+    JinjaFilter, JinjaTest, FILTERS, TESTS,
+    FILTER_NAMES, TEST_NAMES,
+    is_valid_filter, is_valid_test,
+)
+from .lookups import (
+    LookupPlugin, LookupOption, LOOKUPS, LOOKUP_NAMES,
+    is_valid_lookup,
+)
+from .magic_vars import (
+    MagicVariable, MAGIC_VARS, MAGIC_VAR_NAMES,
+    is_magic_variable,
+)
+
+__all__ = [
+    # Schema
+    "FieldDef", "TypeSchema", "SCHEMAS",
+    "PLAY", "TASK", "BLOCK", "ROLE",
+    "ALL_KEYWORDS", "identify_context", "get_schema",
+    # Jinja
+    "JinjaFilter", "JinjaTest", "FILTERS", "TESTS",
+    "FILTER_NAMES", "TEST_NAMES",
+    "is_valid_filter", "is_valid_test",
+    # Lookups
+    "LookupPlugin", "LookupOption", "LOOKUPS", "LOOKUP_NAMES",
+    "is_valid_lookup",
+    # Magic vars
+    "MagicVariable", "MAGIC_VARS", "MAGIC_VAR_NAMES",
+    "is_magic_variable",
+]
+#+end_src
+
+*** Generator
+
+#+begin_src python :tangle ../../tools/extract_schema.py :mkdirp t
+
+OUTPUT_DIR = Path("src/ansible_ls/ansible_schema")
+TEMPLATE_DIR = Path(__file__).parent / "templates"
+
+
+def render_templates(metadata: dict) -> None:
+    """Render all templates with extracted metadata."""
+    from jinja2 import Environment, FileSystemLoader
+
+    env = Environment(
+        loader=FileSystemLoader(TEMPLATE_DIR),
+        keep_trailing_newline=True,
+    )
+    # Register Python builtins as custom filters for generating Python literals
+    env.filters["repr"] = repr
+    env.filters["tuple"] = tuple
+
+    # Template -> output filename
+    templates = {
+        "schema.py.j2": "schema.py",
+        "jinja.py.j2": "jinja.py",
+        "lookups.py.j2": "lookups.py",
+        "magic_vars.py.j2": "magic_vars.py",
+        "__init__.py.j2": "__init__.py",
+    }
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    for template_name, output_name in templates.items():
+        template = env.get_template(template_name)
+        content = template.render(**metadata)
+        output_path = OUTPUT_DIR / output_name
+        output_path.write_text(content)
+        print(f"Generated {output_path}")
+
+
+def main() -> None:
+    """Extract Ansible schema and generate Python modules from templates."""
+    metadata = {
+        "keyword_metadata": extract_keyword_metadata(),
+        "jinja_filters": extract_jinja_filters(),
+        "jinja_tests": extract_jinja_tests(),
+        "lookups": extract_lookups(),
+        "magic_variables": extract_magic_variables(),
+    }
+
+    # Get Ansible version for reporting
+    try:
+        from ansible.release import __version__ as ansible_version
+    except ImportError:
+        ansible_version = "unknown"
+
+    # Stats
+    stats = {
+        ctx: len(fields) for ctx, fields in metadata["keyword_metadata"].items()
+    }
+    stats["jinja_filters"] = len(metadata["jinja_filters"])
+    stats["jinja_tests"] = len(metadata["jinja_tests"])
+    stats["lookups"] = len(metadata["lookups"])
+    stats["magic_variables"] = len(metadata["magic_variables"])
+
+    print(f"Extracted schema from Ansible {ansible_version}:")
+    for key, count in stats.items():
+        print(f"  {key}: {count}")
+
+    # Render templates
+    render_templates(metadata)
+    print(f"\nGenerated modules in {OUTPUT_DIR}")
+
+
+if __name__ == "__main__":
+    main()
+#+end_src
+
+#+RESULTS:
+
+
+*** Unit Tests for Metadata Extraction
+
+These tests verify the structure and contracts of extraction functions.
+Functions that require Ansible return empty collections when unavailable.
+
+#+begin_src python :tangle ../../tests/tools/test_extract_schema.py :mkdirp t
+"""Tests for Ansible metadata extraction.
+
+These tests verify extraction function contracts (return types, structure).
+Functions gracefully return empty collections when Ansible is unavailable.
+"""
+
+import pytest
+
+
+class TestKeywordExtraction:
+    """Test keyword extraction returns correct structure."""
+
+    def test_returns_dict_with_contexts(self):
+        """Should return dict with play/task/block/role keys."""
+        from tools.extract_schema import extract_keywords
+
+        keywords = extract_keywords()
+        assert isinstance(keywords, dict)
+        assert "play" in keywords
+        assert "task" in keywords
+        assert "block" in keywords
+        assert "role" in keywords
+
+    def test_values_are_lists(self):
+        """Each context should map to a list of strings."""
+        from tools.extract_schema import extract_keywords
+
+        keywords = extract_keywords()
+        for context, kw_list in keywords.items():
+            assert isinstance(kw_list, list), f"{context} should be a list"
+
+
+class TestJinjaFilterExtraction:
+    """Test Jinja2 filter extraction returns correct structure."""
+
+    def test_returns_dict(self):
+        """Should return a dict."""
+        from tools.extract_schema import extract_jinja_filters
+
+        filters = extract_jinja_filters()
+        assert isinstance(filters, dict)
+
+    def test_filter_has_metadata(self):
+        """Each filter should have required metadata fields."""
+        from tools.extract_schema import extract_jinja_filters
+
+        filters = extract_jinja_filters()
+        for name, meta in filters.items():
+            assert "short_name" in meta, f"{name} missing short_name"
+            assert "type" in meta, f"{name} missing type"
+
+
+class TestJinjaTestExtraction:
+    """Test Jinja2 test extraction returns correct structure."""
+
+    def test_returns_dict(self):
+        """Should return a dict."""
+        from tools.extract_schema import extract_jinja_tests
+
+        tests = extract_jinja_tests()
+        assert isinstance(tests, dict)
+
+    def test_test_has_metadata(self):
+        """Each test should have required metadata fields."""
+        from tools.extract_schema import extract_jinja_tests
+
+        tests = extract_jinja_tests()
+        for name, meta in tests.items():
+            assert "short_name" in meta, f"{name} missing short_name"
+            assert "type" in meta, f"{name} missing type"
+
+
+class TestLookupExtraction:
+    """Test lookup plugin extraction returns correct structure."""
+
+    def test_returns_dict(self):
+        """Should return a dict."""
+        from tools.extract_schema import extract_lookups
+
+        lookups = extract_lookups()
+        assert isinstance(lookups, dict)
+
+    def test_lookup_structure(self):
+        """Each lookup should have expected fields."""
+        from tools.extract_schema import extract_lookups
+
+        lookups = extract_lookups()
+        for name, meta in lookups.items():
+            assert "short_name" in meta, f"{name} missing short_name"
+            assert "options" in meta, f"{name} missing options"
+            assert isinstance(meta["options"], dict)
+
+
+class TestMagicVariableExtraction:
+    """Test magic variable list (hardcoded, always available)."""
+
+    def test_extracts_magic_variables(self):
+        """Should return magic variables with metadata."""
+        from tools.extract_schema import extract_magic_variables
+
+        magic_vars = extract_magic_variables()
+        # Core magic variables
+        assert "inventory_hostname" in magic_vars
+        assert "hostvars" in magic_vars
+        assert "groups" in magic_vars
+        assert "item" in magic_vars
+
+    def test_magic_variable_has_scope(self):
+        """Each magic variable should have a scope."""
+        from tools.extract_schema import extract_magic_variables
+
+        magic_vars = extract_magic_variables()
+        for name, meta in magic_vars.items():
+            assert "scope" in meta, f"{name} missing scope"
+            assert meta["scope"] in ("host", "global", "play", "task", "role", "loop")
+
+    def test_magic_variable_has_description(self):
+        """Each magic variable should have a description."""
+        from tools.extract_schema import extract_magic_variables
+
+        magic_vars = extract_magic_variables()
+        for name, meta in magic_vars.items():
+            assert "description" in meta, f"{name} missing description"
+            assert len(meta["description"]) > 0
+
+
+class TestKeywordMetadataExtraction:
+    """Test detailed keyword metadata extraction."""
+
+    def test_returns_dict(self):
+        """Should return a dict (may be empty without Ansible)."""
+        from tools.extract_schema import extract_keyword_metadata
+
+        metadata = extract_keyword_metadata()
+        assert isinstance(metadata, dict)
+
+    def test_metadata_structure_when_present(self):
+        """Keyword metadata should have expected structure when data exists."""
+        from tools.extract_schema import extract_keyword_metadata
+
+        metadata = extract_keyword_metadata()
+        for context, keywords in metadata.items():
+            assert isinstance(keywords, dict)
+            for name, info in keywords.items():
+                assert "isa" in info
+                assert "required" in info
+
+
+class TestMainOutput:
+    """Test the main function output structure."""
+
+    def test_main_creates_schema_directory(self, tmp_path, monkeypatch):
+        """Main should create output directory with schema files."""
+        from tools import extract_schema
+
+        monkeypatch.chdir(tmp_path)
+        extract_schema.main()
+
+        output_dir = tmp_path / "src" / "ansible_ls" / "ansible_schema"
+        assert output_dir.exists()
+        assert (output_dir / "__init__.py").exists()
+        assert (output_dir / "schema.py").exists()
+        assert (output_dir / "jinja.py").exists()
+        assert (output_dir / "lookups.py").exists()
+        assert (output_dir / "magic_vars.py").exists()
+
+    def test_generated_modules_are_valid_python(self, tmp_path, monkeypatch):
+        """Generated modules should be valid Python."""
+        import ast
+        from tools import extract_schema
+
+        monkeypatch.chdir(tmp_path)
+        extract_schema.main()
+
+        output_dir = tmp_path / "src" / "ansible_ls" / "ansible_schema"
+        for py_file in output_dir.glob("*.py"):
+            content = py_file.read_text()
+            ast.parse(content)
+#+end_src
+
+** Module Metadata
+:PROPERTIES:
+:ID:       module-metadata
+:END:
+
+Ansible modules have structured documentation that we cache for hover and completion.
+
+*TypeScript:* [[file:src/interfaces/module.ts][src/interfaces/module.ts]] defines =IOption=, =IModuleDocumentation=, and =IModuleMetadata= interfaces.
+
+*Python:* Dataclasses provide the same structure with type hints:
+
+#+begin_src python :tangle ../../src/ansible_ls/models/module.py :mkdirp t
+"""Module metadata and documentation models.
+
+Port of src/interfaces/module.ts
+"""
+
+from dataclasses import dataclass, field
+from typing import Any, Optional
+
+
+@dataclass
+class Option:
+    """Ansible module option/parameter.
+
+    Port of IOption interface.
+    """
+
+    name: str
+    description: Optional[str] = None
+    required: bool = False
+    default: Any = None
+    choices: list[Any] = field(default_factory=list)
+    type: Optional[str] = None
+    aliases: list[str] = field(default_factory=list)
+    suboptions: dict[str, "Option"] = field(default_factory=dict)
+
+
+@dataclass
+class ModuleDocumentation:
+    """Ansible module documentation.
+
+    Port of IModuleDocumentation interface.
+    """
+
+    short_description: Optional[str] = None
+    description: Optional[str] = None
+    options: dict[str, Option] = field(default_factory=dict)
+    notes: list[str] = field(default_factory=list)
+    requirements: list[str] = field(default_factory=list)
+    author: list[str] = field(default_factory=list)
+    deprecated: Optional[str] = None
+
+
+@dataclass
+class ModuleMetadata:
+    """Ansible module metadata.
+
+    Port of IModuleMetadata interface.
+    """
+
+    source: str
+    fqcn: str  # e.g., "ansible.builtin.debug"
+    namespace: str  # e.g., "ansible"
+    collection: str  # e.g., "builtin"
+    name: str  # e.g., "debug"
+    documentation: Optional[ModuleDocumentation] = None
+
+    @classmethod
+    def from_fqcn(cls, fqcn: str, source: str = "") -> "ModuleMetadata":
+        """Create ModuleMetadata from a fully qualified collection name."""
+        parts = fqcn.split(".")
+        if len(parts) < 3:
+            raise ValueError(f"Invalid FQCN: {fqcn}")
+
+        return cls(
+            source=source,
+            fqcn=fqcn,
+            namespace=parts[0],
+            collection=parts[1],
+            name=".".join(parts[2:]),
+        )
+#+end_src
+
+#+begin_src python :tangle ../../src/ansible_ls/models/__init__.py :mkdirp t
+"""Data models for Ansible Language Server."""
+
+from .module import ModuleMetadata, ModuleDocumentation, Option
+
+__all__ = ["ModuleMetadata", "ModuleDocumentation", "Option"]
+#+end_src
+
+** Extension Settings
+:PROPERTIES:
+:ID:       extension-settings
+:END:
+
+Settings map to VS Code's =ansible.*= configuration namespace.
+
+*TypeScript:* [[file:src/interfaces/extensionSettings.ts][src/interfaces/extensionSettings.ts]] defines nested interfaces for settings.
+
+*Python:* Nested dataclasses mirror the JSON structure:
+
+#+begin_src python :tangle ../../src/ansible_ls/models/settings.py :mkdirp t
+"""Extension settings model.
+
+Port of src/interfaces/extensionSettings.ts
+"""
+
+from dataclasses import dataclass, field
+from typing import Optional
+
+
+@dataclass
+class CompletionSettings:
+    """Completion provider settings."""
+    provide_redirect_modules: bool = True
+    provide_module_option_aliases: bool = True
+
+
+@dataclass
+class ValidationSettings:
+    """Validation settings."""
+    enabled: bool = True
+    lint: "LintSettings" = field(default_factory=lambda: LintSettings())
+
+
+@dataclass
+class LintSettings:
+    """ansible-lint settings."""
+    enabled: bool = True
+    path: str = "ansible-lint"
+    arguments: str = ""
+
+
+@dataclass
+class AnsibleSettings:
+    """Root settings for Ansible Language Server.
+
+    Maps to VS Code's ansible.* configuration namespace.
+    """
+    # Python interpreter
+    python_interpreter_path: str = ""
+    python_activation_script: str = ""
+
+    # Ansible paths
+    ansible_path: str = "ansible"
+
+    # Feature toggles
+    use_fully_qualified_collection_names: bool = True
+
+    completion: CompletionSettings = field(default_factory=CompletionSettings)
+    validation: ValidationSettings = field(default_factory=ValidationSettings)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "AnsibleSettings":
+        """Create settings from a dictionary (e.g., from LSP configuration)."""
+        # Handle nested objects
+        ee_data = data.get("executionEnvironment", {})
+        completion_data = data.get("completion", {})
+        validation_data = data.get("validation", {})
+        lint_data = validation_data.get("lint", {})
+
+        return cls(
+            python_interpreter_path=data.get("python", {}).get("interpreterPath", ""),
+            python_activation_script=data.get("python", {}).get("activationScript", ""),
+            ansible_path=data.get("ansiblePath", "ansible"),
+            use_fully_qualified_collection_names=data.get(
+                "useFullyQualifiedCollectionNames", True
+            ),
+            completion=CompletionSettings(
+                provide_redirect_modules=completion_data.get(
+                    "provideRedirectModules", True
+                ),
+                provide_module_option_aliases=completion_data.get(
+                    "provideModuleOptionAliases", True
+                ),
+            ),
+            validation=ValidationSettings(
+                enabled=validation_data.get("enabled", True),
+                lint=LintSettings(
+                    enabled=lint_data.get("enabled", True),
+                    path=lint_data.get("path", "ansible-lint"),
+                    arguments=lint_data.get("arguments", ""),
+                ),
+            ),
+        )
+#+end_src
