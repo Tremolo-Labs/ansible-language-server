@@ -313,5 +313,651 @@ For Emacs with eglot:
              '(yaml-mode . ("uv" "run" "ansible-language-server")))
 #+end_src
 
+
+
+*** Continuous Integration
+:PROPERTIES:
+:ID:       continuous-integration
+:END:
+
+The CI pipeline validates the Python implementation using GitHub Actions, with task orchestration via [[https://taskfile.dev][Taskfile]].
+
+**** Tool Versions
+
+asdf manages runtime versions. Add Python and uv alongside existing Node.js tooling.
+
+#+begin_src text :tangle ../.tool-versions
+nodejs 18.19.1 20.11.1
+task 3.33.1
+python 3.12.4
+#+end_src
+
+**** Taskfile
+
+Update =Taskfile.yml= to include Python tasks alongside existing TypeScript tasks. The Python tasks use =uv= for fast, reproducible dependency management.
+
+#+begin_src yaml :tangle ../Taskfile.yml
+---
+# see https://taskfile.dev/#/
+version: "3"
+env: &env
+  # basically the same thing from .envrc file:
+  # Avoid undesired extra hints from docker when pulling images
+  DOCKER_CLI_HINTS: "false"
+vars:
+  EE_VERSION:
+    sh: ./tools/get-image-version
+  VIRTUAL_ENV:
+    sh: echo "${VIRTUAL_ENV:-${PWD}/out/venvs/${HOSTNAME:-localhost}}"
+tasks:
+  default:
+    desc: Run most commands
+    deps:
+      - setup
+    env:
+      VERSION:
+        sh: node -p "require('./package.json').version"
+    cmds:
+      - task: lint
+      - task: package
+      - task: docs
+      - echo Done {{.VERSION}}!
+
+  # ============================================================
+  # Python Language Server Tasks
+  # ============================================================
+
+  py:setup:
+    desc: Install Python dependencies with uv
+    run: once
+    cmds:
+      - uv sync --extra dev
+    sources:
+      - pyproject.toml
+      - uv.lock
+    generates:
+      - .venv/pyvenv.cfg
+
+  py:test:
+    desc: Run Python test suite
+    deps:
+      - py:setup
+    cmds:
+      - uv run pytest -v
+    sources:
+      - src/**/*.py
+      - tests/**/*.py
+
+  py:test-cov:
+    desc: Run Python tests with coverage
+    deps:
+      - py:setup
+    cmds:
+      - uv run pytest --cov=ansible_ls --cov-report=term-missing --cov-report=xml
+
+  py:lint:
+    desc: Lint Python code with ruff
+    deps:
+      - py:setup
+    cmds:
+      - uv run ruff check src tests
+      - uv run ruff format --check src tests
+
+  py:format:
+    desc: Format Python code with ruff
+    deps:
+      - py:setup
+    cmds:
+      - uv run ruff format src tests
+      - uv run ruff check --fix src tests
+
+  py:typecheck:
+    desc: Type-check Python code with mypy
+    deps:
+      - py:setup
+    cmds:
+      - uv run mypy src
+
+  py:all:
+    desc: Run all Python checks (lint, typecheck, test)
+    cmds:
+      - task: py:lint
+      - task: py:typecheck
+      - task: py:test
+
+  py:build:
+    desc: Build Python wheel
+    deps:
+      - py:setup
+    cmds:
+      - uv build
+    sources:
+      - src/**/*.py
+      - pyproject.toml
+    generates:
+      - dist/*.whl
+      - dist/*.tar.gz
+
+  # ============================================================
+  # TypeScript Language Server Tasks (Legacy)
+  # ============================================================
+
+  vscode:
+    desc: Run vscode-ansible tests using current code from ALS
+    deps:
+      - setup
+    cmds:
+      - ./tools/vscode.sh
+
+  docs:
+    desc: Build the documentation
+    deps:
+      - setup
+    cmds:
+      # Retrieve possibly missing commits:
+      - $(git rev-parse --is-shallow-repository) && git fetch --unshallow > /dev/null || true
+      - git fetch --tags --force
+      - npm run generate-settings-readme
+      - "source {{.VIRTUAL_ENV}}/bin/activate && mkdocs build --strict"
+
+  setup:
+    desc: Install dependencies (TypeScript)
+    run: once
+    env:
+      # used inside test-setup.sh
+      OS: "{{OS}}"
+      ARCH: "{{ARCH}}"
+    cmds:
+      - ./tools/test-setup.sh
+    sources:
+      - package.json
+      - package-lock.json
+      - .config/requirements.*
+      - setup.cfg
+      - tools/test-setup.sh
+      - .config/**/*.*
+    generates:
+      - out/log/manifest.yml
+
+  build:
+    desc: Build the project (TypeScript)
+    deps:
+      - setup
+    cmds:
+      - npm run compile
+    sources:
+      - package-lock.json
+      - package.json
+      - src/**/*.*
+      - test/**/*.*
+      - tsconfig.json
+      - webpack.config.js
+
+  deps:
+    desc: Update dependencies
+    deps:
+      - setup
+    cmds:
+      - npm install -g npm@latest
+      # 1st node version is the implicit one and must match node version from
+      # vscode about dialog and be within supported range from https://www.npmjs.com/package/vscode-extension-tester
+      # as we want to avoid using different node versions across the projects.
+      # 2nd node version is used for preparing for new versions
+      - asdf local nodejs latest:18 latest:$(asdf nodejs resolve lts)
+      - "{{.VIRTUAL_ENV}}/bin/python -m pre_commit autoupdate"
+      - npm outdated
+      # bumps some developments dependencies
+      - npx ncu -u --dep dev
+      # running install after ncu is needed in order to update the lock file
+      - npm install
+
+  lint:
+    desc: Lint the project (all languages)
+    deps:
+      - setup
+    env:
+      <<: *env
+      PRE_COMMIT_COLOR: always
+    cmds:
+      - "{{.VIRTUAL_ENV}}/bin/python -m pre_commit run -a"
+    silent: true
+    sources:
+      - "*.*"
+      - .config/**/*.*
+      - .github/**/*.*
+      - .vscode/**/*.*
+      - doc/**/*.*
+      - images/**/*.*
+      - src/**/*.*
+      - test/**/*.*
+      - tests/**/*.*
+      - tools/**/*.*
+
+  .test:
+    # Keep the desc empty to hide entry when listing
+    # desc: Run all tests
+    vars:
+      ENGINE:
+        sh: bash -c "command -v docker | head -n 1"
+    deps:
+      - build
+    cmds:
+      - "{{.ENGINE}} pull ghcr.io/ansible/creator-ee:{{ .EE_VERSION }}"
+      # Tests that container engine is functional and that we have the image:
+      - "{{.ENGINE}} run -i ghcr.io/ansible/creator-ee:{{ .EE_VERSION }} ansible-lint --version"
+      - >
+        source {{.VIRTUAL_ENV}}/bin/activate &&
+        command -v ansible-lint &&
+        npm run test
+    interactive: true
+
+  test:
+    desc: Run all tests using node (same version as vscode)
+    cmds:
+      - bash -c 'asdf local nodejs latest:18 latest:$(asdf nodejs resolve lts)'
+      - task: .test
+
+  test-node-lts:
+    desc: Run all tests using node-lts (future)
+    cmds:
+      # switch to node-lts
+      - bash -c 'asdf local nodejs latest:$(asdf nodejs resolve lts) latest:18'
+      - task: .test
+      - node --version
+      # restore implicit node version
+      - bash -c 'asdf local nodejs latest:18 latest:$(asdf nodejs resolve lts)'
+
+  test-with-ee:
+    desc: Run only ee tests (TypeScript)
+    deps:
+      - setup
+    cmds:
+      - >
+        source {{.VIRTUAL_ENV}}/bin/activate &&
+        bash -c 'npm run test-with-ee'
+    interactive: true
+
+  test-without-ee:
+    desc: Run only non-ee tests (TypeScript)
+    deps:
+      - setup
+    cmds:
+      - >
+        source {{.VIRTUAL_ENV}}/bin/activate &&
+        bash -c 'npm run test-without-ee'
+    interactive: true
+
+  package:
+    desc: Package extension
+    deps:
+      - build
+    sources:
+      - docs/changelog.md
+      - docs/README.md
+      - package*.json
+      - out/**/*.*
+    generates:
+      - "*.vsix"
+    cmds:
+      - rm -f *.tgz
+      - bash -c 'npm pack'
+    silent: false
+
+  pr:
+    desc: Opens a pull request using gh
+    deps:
+      - lint
+    cmds:
+      - gh pr create
+    interactive: true
+
+  release:
+    desc: Create a new release (used by CI)
+    deps:
+      - setup
+    cmds:
+      - ./tools/release.sh
+    interactive: true
+#+end_src
+
+**** GitHub Actions Workflow
+
+The Python CI workflow runs on push and pull requests to main. It tests across multiple Python versions and operating systems.
+
+#+begin_src yaml :tangle ../.github/workflows/python.yml :mkdirp t
+---
+name: Python CI
+
+on:
+  push:
+    branches: [main, python-vibes]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: python-${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+env:
+  FORCE_COLOR: "1"
+  UV_SYSTEM_PYTHON: "1"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Ruff check
+        run: uv run ruff check src tests
+
+      - name: Ruff format check
+        run: uv run ruff format --check src tests
+
+      - name: Type check with mypy
+        run: uv run mypy src
+
+  test:
+    name: Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+        include:
+          - os: windows-latest
+            python-version: "3.12"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run tests
+        run: uv run pytest -v --tb=short
+
+      - name: Run tests with coverage
+        if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
+        run: uv run pytest --cov=ansible_ls --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+
+  build:
+    name: Build wheel
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build package
+        run: uv build
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel
+          path: dist/*.whl
+          retention-days: 5
+
+  check:
+    # Branch protection gate
+    if: always()
+    runs-on: ubuntu-latest
+    needs: [lint, test, build]
+    steps:
+      - name: Decide whether the needed jobs succeeded or failed
+        uses: re-actors/alls-green@release/v1
+        with:
+          jobs: ${{ toJSON(needs) }}
+#+end_src
+
+**** Pre-commit Configuration
+
+Add Python linting hooks to the pre-commit configuration. This ensures code quality checks run locally before commits.
+
+#+begin_src yaml :tangle ../.pre-commit-config.yaml
+---
+ci:
+  # format compatible with commitlint
+  autoupdate_commit_msg: "chore: pre-commit autoupdate"
+  autoupdate_schedule: monthly
+  autofix_commit_msg: |
+    chore: auto fixes from pre-commit.com hooks
+
+    for more information, see https://pre-commit.ci
+  skip:
+    # https://github.com/pre-commit-ci/issues/issues/55
+    - npm-ci
+    - codecov
+exclude: >
+  (?x)^(
+    .config/requirements.in|
+    .*.svg
+  )$
+repos:
+  # ============================================================
+  # Python Hooks
+  # ============================================================
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # ============================================================
+  # Shell Hooks
+  # ============================================================
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.9.0.6
+    hooks:
+      - id: shellcheck
+        args:
+          - --color=always
+          - -e
+          - SC1091
+
+  # ============================================================
+  # Local Hooks
+  # ============================================================
+  - repo: local
+    hooks:
+      - id: npm-ci
+        name: Run 'npm ci' to ensure deps and versions are correct
+        entry: >-
+          bash -c 'npm ci --ignore-scripts &&
+          npm version --allow-same-version --no-commit-hooks
+          --no-git-tag-version $(npm pkg get version | sed "s/\"//g")'
+        language: node
+        files: "(package|package-lock).json$"
+        pass_filenames: false
+      - id: git-dirty
+        name: Check if git reports dirty
+        entry: git diff --exit-code
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: codecov
+        name: Check codecov.yml
+        # https://superuser.com/a/1587813/3004
+        entry: >
+          bash -c '[ $(
+          curl --silent -o /dev/stderr -w "%{http_code}" -X POST
+          --data-binary @codecov.yml https://codecov.io/validate
+          ) -eq 200 ]'
+        language: system
+        files: "codecov.yml"
+        pass_filenames: false
+
+  # ============================================================
+  # General Hooks
+  # ============================================================
+  - repo: https://github.com/streetsidesoftware/cspell-cli
+    rev: v8.3.0
+    hooks:
+      - id: cspell
+        name: Spell check with cspell
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks.git
+    rev: v4.5.0
+    hooks:
+      - id: end-of-file-fixer
+        exclude: >
+          (?x)^(
+            docs/settings.md
+          )$
+      - id: trailing-whitespace
+        exclude: >
+          (?x)^(
+            docs/settings.md
+          )$
+      - id: mixed-line-ending
+      - id: check-byte-order-marker
+      - id: check-executables-have-shebangs
+      - id: check-merge-conflict
+      - id: check-json
+        # https://github.com/pre-commit/pre-commit-hooks/issues/395
+        exclude: >
+          (?x)^(
+            .vscode/.*|
+            scripts/tsconfig.json|
+            scripts/tsconfig.esm.json|
+            scripts/tsconfig.umd.json|
+            tsconfig.json
+          )$
+
+      - id: debug-statements
+        language_version: python3
+
+  # ============================================================
+  # Formatting Hooks
+  # ============================================================
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    # keep it before markdownlint and eslint
+    rev: "v4.0.0-alpha.8"
+    hooks:
+      - id: prettier
+        additional_dependencies:
+          - prettier
+
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.39.0
+    hooks:
+      - id: markdownlint
+        exclude: >
+          (?x)^
+            docs/changelog-fragments\.d/\d+\.\w+\.md|
+            docs/settings.md
+          $
+
+  # ============================================================
+  # TypeScript Hooks (Legacy)
+  # ============================================================
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v9.0.0-alpha.2
+    hooks:
+      - id: eslint
+        args:
+          - --fix
+          - --max-warnings
+          - "0"
+        additional_dependencies:
+          - "@typescript-eslint/eslint-plugin"
+          - "@typescript-eslint/parser"
+          - eslint@v8.28.0
+          - eslint-plugin-prettier
+          - eslint-config-prettier
+          - prettier
+          - typescript
+          - typescript-eslint
+        files: \.[jt]sx?$ # *.js, *.jsx, *.ts and *.tsx
+        types: [file]
+#+end_src
+
+**** PyPI Publishing Workflow
+
+For releasing the Python package to PyPI (replaces npm publishing).
+
+#+begin_src yaml :tangle ../.github/workflows/publish-pypi.yml :mkdirp t
+---
+name: Publish to PyPI
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+jobs:
+  pypi:
+    name: Publish to PyPI
+    environment:
+      name: publish
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # Required for trusted publishing
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build package
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # Uses trusted publishing - no API token needed
+        # Configure at: https://pypi.org/manage/project/ansible-language-server/settings/publishing/
+#+end_src
+
 *** Implementation
 documented at [[id:python-port-docs][Python Implementation]]
