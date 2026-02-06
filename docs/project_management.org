@@ -169,3 +169,17 @@ return AnsibleContext.UNKNOWN
 ** TODO set up pipeline to build for each recent version of the stack
   [2026-02-04 Wed]
   [[id:99451843-ca6a-4123-abc7-7db9c6e525ad][Implement services]]
+** TODO integration tests with emacs
+  [2026-02-06 Fri]
+
+  test out the xref and imenu and completions with the same ansible project against the python and node language servers
+** TODO scope detection for vals of keywords
+  [2026-02-06 Fri]
+  [[file:~/code/tremolo/infrastructure/roles/nginx/tasks/main.yml::register: nginx_config]]
+
+  the completion provider does not render the options of some keys as you type them in, and the hover provider should also render better docs than just the type and default.
+** TODO hover provider doesn't recognize module names
+  [2026-02-06 Fri]
+  [[file:~/code/tremolo/infrastructure/roles/nginx/tasks/main.yml::ansible.builtin.template:]]
+** TODO should go ahead and add the python grammar to resolve declarations and references there
+  [2026-02-06 Fri]
