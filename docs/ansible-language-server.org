@@ -318,12 +318,32 @@ For Emacs with eglot:
 :ID:       arch-linux-package
 :END:
 
-For Arch Linux users, a PKGBUILD enables system-wide installation via =makepkg=.
+For Arch Linux installation, we avoid AUR dependency chains by bundling dependencies in an isolated virtual environment.
+
+**Option 1: pipx (Recommended for Users)**
+
+The simplest approach uses =pipx= which manages isolated environments automatically:
+
+#+begin_src shell :tangle no
+# Install pipx if needed
+sudo pacman -S python-pipx
+
+# Install from local checkout
+pipx install .
+
+# Or install from git directly
+pipx install git+https://github.com/ansible/ansible-language-server.git
+
+# The binary is available at ~/.local/bin/ansible-language-server
+#+end_src
+
+**Option 2: System Package with Bundled venv**
+
+For system-wide installation, the PKGBUILD creates an isolated venv in =/opt= with all dependencies bundled via pip. This avoids requiring AUR packages like =python-pygls=, =python-lsprotocol=, etc.
 
 **Building and Installing:**
 
 #+begin_src shell :tangle no
-# From the repository root
 cd pkg/arch
 makepkg -si
 #+end_src
@@ -339,85 +359,78 @@ pkgdesc="Language Server Protocol implementation for Ansible (Python)"
 arch=('any')
 url="https://github.com/ansible/ansible-language-server"
 license=('GPL3')
-depends=(
-    'python>=3.10'
-    'python-pygls>=1.3.0'
-    'python-ruamel-yaml>=0.18.0'
-    'python-attrs>=23.0.0'
-    'python-tree-sitter>=0.23.0'
-    'python-lsprotocol>=2024.0.0'
-    'python-ansible-runner>=2.4.0'
-    'ansible>=10.0.0'
-    'python-jinja>=3.1.0'
-)
-makedepends=(
-    'python-build'
-    'python-installer'
-    'python-hatchling'
-)
-optdepends=(
-    'python-tree-sitter-yaml: YAML parsing support'
-    'python-tree-sitter-jinja2: Jinja2 template support'
-)
+# Minimal system dependencies - everything else bundled in venv
+depends=('python>=3.10')
+makedepends=('python-pip' 'python-virtualenv')
+optdepends=('ansible: for full Ansible integration')
 provides=('ansible-language-server')
 conflicts=('nodejs-ansible-language-server')
+backup=()
 source=()
+install="${pkgname}.install"
 
-# For local development, override source in makepkg.conf or use:
-# makepkg -e  (to skip source extraction, build from current directory)
+_venvdir="/opt/${pkgname}"
 
 build() {
-    cd "${srcdir}/.." || cd "${startdir}/../.."
-    python -m build --wheel --no-isolation
+    # Build from repository root
+    cd "${startdir}/../.." || cd "${srcdir}/.."
+
+    # Create virtual environment
+    python -m venv --system-site-packages "${srcdir}/venv"
+
+    # Install package and all dependencies into venv
+    "${srcdir}/venv/bin/pip" install --no-cache-dir .
 }
 
 package() {
-    cd "${srcdir}/.." || cd "${startdir}/../.."
-    python -m installer --destdir="$pkgdir" dist/*.whl
+    cd "${startdir}/../.." || cd "${srcdir}/.."
+
+    # Install venv to /opt
+    install -dm755 "${pkgdir}${_venvdir}"
+    cp -a "${srcdir}/venv/." "${pkgdir}${_venvdir}"
+
+    # Create wrapper script in /usr/bin
+    install -dm755 "${pkgdir}/usr/bin"
+    cat > "${pkgdir}/usr/bin/ansible-language-server" << 'EOF'
+#!/bin/sh
+exec /opt/python-ansible-language-server/bin/ansible-language-server "$@"
+EOF
+    chmod 755 "${pkgdir}/usr/bin/ansible-language-server"
+
+    # Fix shebang paths in venv to use installed location
+    find "${pkgdir}${_venvdir}/bin" -type f -exec \
+        sed -i "s|${srcdir}/venv|${_venvdir}|g" {} \;
 }
 #+end_src
 
-**Development Installation (editable):**
+**Install Script:**
 
-For local development without rebuilding the package on each change:
+#+begin_src bash :tangle ../pkg/arch/python-ansible-language-server.install :mkdirp t
+post_install() {
+    echo "ansible-language-server installed to /usr/bin/ansible-language-server"
+    echo ""
+    echo "Configure your editor to use the language server:"
+    echo "  VS Code: Set ansible.languageServer.path to /usr/bin/ansible-language-server"
+    echo "  Emacs:   (add-to-list 'eglot-server-programs '(yaml-mode . (\"ansible-language-server\")))"
+}
+
+post_upgrade() {
+    post_install
+}
+#+end_src
+
+**Option 3: Development Installation**
+
+For local development without packaging:
 
 #+begin_src shell :tangle no
-# Install in editable mode system-wide (requires root)
-sudo pip install -e .
+# Create a local venv and install in editable mode
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
 
-# Or use a user installation
-pip install --user -e .
-#+end_src
-
-**AUR Submission:**
-
-For AUR submission, create a source-based PKGBUILD that fetches from git or PyPI:
-
-#+begin_src bash :tangle no
-# AUR-style PKGBUILD (example - adjust for actual release)
-pkgname=python-ansible-language-server
-pkgver=0.1.0
-pkgrel=1
-pkgdesc="Language Server Protocol implementation for Ansible (Python)"
-arch=('any')
-url="https://github.com/ansible/ansible-language-server"
-license=('GPL3')
-depends=('python' 'python-pygls' 'python-ruamel-yaml' 'python-attrs'
-         'python-tree-sitter' 'python-lsprotocol' 'python-ansible-runner'
-         'ansible' 'python-jinja')
-makedepends=('python-build' 'python-installer' 'python-hatchling')
-source=("${pkgname}-${pkgver}.tar.gz::https://github.com/ansible/ansible-language-server/archive/v${pkgver}.tar.gz")
-sha256sums=('SKIP')
-
-build() {
-    cd "ansible-language-server-${pkgver}"
-    python -m build --wheel --no-isolation
-}
-
-package() {
-    cd "ansible-language-server-${pkgver}"
-    python -m installer --destdir="$pkgdir" dist/*.whl
-}
+# Or use uv (faster)
+uv sync --extra dev
 #+end_src
 
 *** Continuous Integration
